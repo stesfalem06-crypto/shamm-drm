@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Xama" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#7C5CFF</item>
+        <item name="colorPrimaryDark">#12121A</item>
+        <item name="colorAccent">#7C5CFF</item>
+        <item name="android:windowBackground">#12121A</item>
+        <item name="android:statusBarColor">#12121A</item>
+    </style>
+</resources>

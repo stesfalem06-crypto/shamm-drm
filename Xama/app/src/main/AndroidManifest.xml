@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:label="Xama"
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.Xama"
+        android:usesCleartextTraffic="false">
+        <!-- allowBackup=false matters here: Android's auto-backup could
+             otherwise copy app-private files (including incoming encrypted
+             videos/keys) off the device via cloud backup - a piracy path
+             we explicitly close off. -->
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.PlayerActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified"
+            android:configChanges="orientation|screenSize|keyboardHidden"/>
+
+        <activity
+            android:name=".ui.ReelsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"/>
+    </application>
+</manifest>

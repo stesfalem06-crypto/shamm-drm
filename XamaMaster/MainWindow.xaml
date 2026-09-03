@@ -1,0 +1,80 @@
+<Window x:Class="XamaMaster.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Xama Master" Height="640" Width="1000"
+        Background="{StaticResource BgDark}"
+        FontFamily="Segoe UI">
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,24">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal">
+                <Ellipse Width="12" Height="12" Fill="{StaticResource Accent}" Margin="0,4,10,0"/>
+                <TextBlock Text="Xama Master" FontSize="26" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
+                <TextBlock Text="  encrypt &amp; price your catalog" FontSize="26" Foreground="{StaticResource TextMuted}"/>
+            </StackPanel>
+            <Button Grid.Column="1" Content="Settlement..." Style="{StaticResource PrimaryButton}"
+                    Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
+                    VerticalAlignment="Top" Click="OpenSettlement_Click"/>
+        </Grid>
+
+        <!-- Import panel -->
+        <Border Grid.Row="1" Background="{StaticResource BgPanel}" CornerRadius="14" Padding="20" Margin="0,0,0,20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="140"/>
+                    <ColumnDefinition Width="130"/>
+                    <ColumnDefinition Width="140"/>
+                    <ColumnDefinition Width="150"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                    <TextBlock Text="Video title" Foreground="{StaticResource TextMuted}" FontSize="12" Margin="2,0,0,4"/>
+                    <TextBox x:Name="TitleBox" Height="38"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                    <TextBlock Text="Token price" Foreground="{StaticResource TextMuted}" FontSize="12" Margin="2,0,0,4"/>
+                    <TextBox x:Name="PriceBox" Height="38" Text="1"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Margin="0,20,12,0" Orientation="Horizontal">
+                    <CheckBox x:Name="VerticalCheck" Content="Vertical (Reels)"
+                              Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                </StackPanel>
+                <Button Grid.Column="3" Content="Choose file..." Style="{StaticResource PrimaryButton}"
+                        Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
+                        Margin="0,20,10,0" Height="38" Click="ChooseFile_Click"/>
+                <Button Grid.Column="4" Content="Encrypt &amp; Add" Style="{StaticResource PrimaryButton}"
+                        Margin="0,20,0,0" Height="38" Click="Encrypt_Click"/>
+            </Grid>
+        </Border>
+
+        <!-- Library list -->
+        <Border Grid.Row="2" Background="{StaticResource BgPanel}" CornerRadius="14" Padding="4">
+            <ListView x:Name="LibraryList" Background="Transparent" BorderThickness="0"
+                      Foreground="{StaticResource TextPrimary}">
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn Header="Title" Width="360" DisplayMemberBinding="{Binding Title}"/>
+                        <GridViewColumn Header="Price (tokens)" Width="140" DisplayMemberBinding="{Binding TokenPrice}"/>
+                        <GridViewColumn Header="Video ID" Width="260" DisplayMemberBinding="{Binding VideoId}"/>
+                        <GridViewColumn Header="Encrypted" Width="180" DisplayMemberBinding="{Binding EncryptedAtUtc}"/>
+                    </GridView>
+                </ListView.View>
+            </ListView>
+        </Border>
+
+        <!-- Status bar -->
+        <TextBlock x:Name="StatusText" Grid.Row="3" Foreground="{StaticResource TextMuted}"
+                   Margin="0,16,0,0" Text="Ready."/>
+    </Grid>
+</Window>

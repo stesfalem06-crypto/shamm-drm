@@ -1,0 +1,37 @@
+[package]
+name = "shamm_crypto"
+version = "0.1.0"
+edition = "2021"
+
+# This one crate compiles into:
+#  - shamm_crypto.dll   (used by Xama Master + X Seller on Windows via P/Invoke)
+#  - libshamm_crypto.so (used by Xama on Android via JNI)
+# Keeping the crypto logic in ONE place means Windows and Android can never
+# drift apart on how keys are derived/wrapped - that consistency is the whole
+# point of a shared core.
+
+[lib]
+name = "shamm_crypto"
+crate-type = ["cdylib"]   # produces .dll on Windows, .so on Android/Linux
+
+[dependencies]
+aes-gcm = "0.10"          # AES-256-GCM: authenticated encryption for wrapping the small per-video content key
+aes = "0.8"                # AES block cipher, used directly with CTR mode for the video bytes themselves
+ctr = "0.9"                 # CTR mode: unlike GCM, it's seekable (needed so the player can jump to any point in a video)
+hkdf = "0.12"              # HKDF: derives per-device keys from the hardware fingerprint
+sha2 = "0.10"              # SHA-256, used inside HKDF and for fingerprint hashing
+rand = "0.8"               # secure random nonce/key generation
+zeroize = { version = "1", features = ["derive"] } # wipes key material from memory after use
+
+# JNI is only needed on Android. Windows calls these functions directly via
+# P/Invoke (plain C calling convention); Android's JVM requires the extra
+# JNI_OnLoad registration step in src/jni_bridge.rs, which only compiles
+# when targeting Android.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true               # smaller, harder-to-read binary (helps a little against casual reverse-engineering)
+panic = "abort"
