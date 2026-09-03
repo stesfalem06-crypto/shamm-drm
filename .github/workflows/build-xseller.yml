@@ -1,0 +1,46 @@
+name: Build X Seller
+
+on:
+  push:
+    paths:
+      - "XSeller/**"
+      - "crypto-core/**"
+      - ".github/workflows/build-xseller.yml"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build crypto core (Windows DLL)
+        run: cargo build --release
+        working-directory: crypto-core
+
+      - name: Copy shamm_crypto.dll into XSeller
+        run: copy crypto-core\target\release\shamm_crypto.dll XSeller\shamm_crypto.dll
+        shell: cmd
+
+      - name: Publish X Seller (single portable .exe)
+        run: dotnet publish XSeller/XSeller.csproj -c Release -o publish
+
+      - name: Copy crypto DLL next to the published exe
+        run: copy crypto-core\target\release\shamm_crypto.dll publish\shamm_crypto.dll
+        shell: cmd
+
+      - name: Download and bundle adb.exe (Android platform-tools)
+        run: |
+          Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" -OutFile platform-tools.zip
+          Expand-Archive platform-tools.zip -DestinationPath publish -Force
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: XSeller-windows
+          path: publish/

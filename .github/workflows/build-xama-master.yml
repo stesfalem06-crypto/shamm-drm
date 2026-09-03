@@ -1,0 +1,40 @@
+name: Build Xama Master
+
+on:
+  push:
+    paths:
+      - "XamaMaster/**"
+      - "crypto-core/**"
+      - ".github/workflows/build-xama-master.yml"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build crypto core (Windows DLL)
+        run: cargo build --release
+        working-directory: crypto-core
+
+      - name: Copy shamm_crypto.dll into XamaMaster
+        run: copy crypto-core\target\release\shamm_crypto.dll XamaMaster\shamm_crypto.dll
+        shell: cmd
+
+      - name: Publish Xama Master (single portable .exe)
+        run: dotnet publish XamaMaster/XamaMaster.csproj -c Release -o publish
+
+      - name: Copy crypto DLL next to the published exe
+        run: copy crypto-core\target\release\shamm_crypto.dll publish\shamm_crypto.dll
+        shell: cmd
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: XamaMaster-windows
+          path: publish/
