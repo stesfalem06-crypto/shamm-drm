@@ -1,0 +1,25 @@
+# Build outputs
+**/bin/
+**/obj/
+**/target/
+**/build/
+**/.gradle/
+**/local.properties
+**/*.apk
+**/*.aab
+**/*.exe
+**/*.dll
+**/*.so
+**/publish/
+**/jniLibs/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.user
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db
