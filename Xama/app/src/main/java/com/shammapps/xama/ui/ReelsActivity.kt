@@ -3,6 +3,7 @@ package com.shammapps.xama.ui
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.shammapps.xama.R
 import com.shammapps.xama.crypto.ShammKeyResolver
@@ -15,6 +16,10 @@ class ReelsActivity : AppCompatActivity() {
     private lateinit var pager: ViewPager2
     private lateinit var adapter: ReelsAdapter
     private var videos: List<LocalVideo> = emptyList()
+
+    /** ViewPager2 hosts an internal RecyclerView; we need it to look up holders. */
+    private fun recycler(): RecyclerView? =
+        if (pager.childCount > 0) pager.getChildAt(0) as? RecyclerView else null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,8 +58,9 @@ class ReelsActivity : AppCompatActivity() {
             override fun onPageSelected(position: Int) {
                 // Pause every page except the one now in view - only one
                 // clip should ever be playing audio at a time.
+                val rv = recycler() ?: return
                 for (i in videos.indices) {
-                    val holder = pager.findViewHolderForAdapterPosition(i)
+                    val holder = rv.findViewHolderForAdapterPosition(i)
                     if (holder is ReelsAdapter.ReelHolder) {
                         adapter.setPlaying(holder, i == position)
                     }
@@ -65,13 +71,15 @@ class ReelsActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        val holder = pager.findViewHolderForAdapterPosition(pager.currentItem)
+        if (!::pager.isInitialized) return
+        val holder = recycler()?.findViewHolderForAdapterPosition(pager.currentItem)
         if (holder is ReelsAdapter.ReelHolder) adapter.setPlaying(holder, false)
     }
 
     override fun onResume() {
         super.onResume()
-        val holder = pager.findViewHolderForAdapterPosition(pager.currentItem)
+        if (!::pager.isInitialized) return
+        val holder = recycler()?.findViewHolderForAdapterPosition(pager.currentItem)
         if (holder is ReelsAdapter.ReelHolder) adapter.setPlaying(holder, true)
     }
 }
