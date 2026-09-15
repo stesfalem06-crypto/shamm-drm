@@ -1,8 +1,15 @@
 package com.shammapps.xama.ui
 
 import android.os.Bundle
+import android.view.View
+import android.view.WindowManager
+import android.widget.ImageButton
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -16,13 +23,8 @@ import com.shammapps.xama.security.SecurityGuard
 import java.io.File
 
 /**
- * Plays exactly one video. Handles both cases:
- *   - Plain (unencrypted) file: normal ExoPlayer file playback, no restrictions.
- *   - Protected (.shammvid) file: resolves + unwraps the content key for THIS
- *     phone, then streams decrypted bytes through ShammDataSource. Screenshot/
- *     recording protection and root/emulator checks are enforced only for
- *     protected content - a plain video has none of these restrictions, per
- *     the product requirement.
+ * Full-screen video player with MX Player-style chrome:
+ * top title bar, large center play/pause, bottom seek + time.
  */
 class PlayerActivity : AppCompatActivity() {
 
@@ -31,15 +33,24 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Immersive edge-to-edge player
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_player)
+        hideSystemBars()
 
-        val title = intent.getStringExtra(MainActivity.EXTRA_TITLE) ?: ""
-        val filePath = intent.getStringExtra(MainActivity.EXTRA_FILE_PATH) ?: return finishWithError("Missing file")
+        val title = intent.getStringExtra(MainActivity.EXTRA_TITLE) ?: "Video"
+        val filePath = intent.getStringExtra(MainActivity.EXTRA_FILE_PATH) ?: ""
         val isEncrypted = intent.getBooleanExtra(MainActivity.EXTRA_IS_ENCRYPTED, false)
         val ivBase64 = intent.getStringExtra(MainActivity.EXTRA_IV_BASE64)
         val videoId = intent.getStringExtra(MainActivity.EXTRA_VIDEO_ID) ?: ""
 
-        title.let { supportActionBar?.title = it }
+        val playerView = findViewById<PlayerView>(R.id.playerView)
+        // Wire title + close into the custom controller once it inflates
+        playerView.post {
+            playerView.findViewById<TextView>(R.id.exo_title)?.text = title
+            playerView.findViewById<ImageButton>(R.id.exo_close)?.setOnClickListener { finish() }
+        }
 
         if (isEncrypted) {
             SecurityGuard.enableScreenshotProtection(this)
@@ -48,13 +59,19 @@ class PlayerActivity : AppCompatActivity() {
                 finish()
                 return
             }
-            playProtected(videoId, ivBase64 ?: "")
+            playProtected(videoId, ivBase64 ?: "", playerView)
         } else {
-            playPlain(filePath)
+            playPlain(filePath, playerView)
         }
     }
 
-    private fun playProtected(videoId: String, ivBase64: String) {
+    private fun hideSystemBars() {
+        val c = WindowInsetsControllerCompat(window, window.decorView)
+        c.hide(WindowInsetsCompat.Type.systemBars())
+        c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    }
+
+    private fun playProtected(videoId: String, ivBase64: String, playerView: PlayerView) {
         val resolver = ShammKeyResolver(this)
         val resolved = resolver.resolve(videoId, ivBase64)
         if (resolved == null) {
@@ -66,7 +83,7 @@ class PlayerActivity : AppCompatActivity() {
 
         val exo = ExoPlayer.Builder(this).build()
         player = exo
-        findViewById<PlayerView>(R.id.playerView).player = exo
+        playerView.player = exo
 
         val factory = DataSource.Factory { ShammDataSource(resolved.contentKey, resolved.iv) }
         val mediaSource = ProgressiveMediaSource.Factory(factory)
@@ -77,18 +94,13 @@ class PlayerActivity : AppCompatActivity() {
         exo.playWhenReady = true
     }
 
-    private fun playPlain(filePath: String) {
+    private fun playPlain(filePath: String, playerView: PlayerView) {
         val exo = ExoPlayer.Builder(this).build()
         player = exo
-        findViewById<PlayerView>(R.id.playerView).player = exo
+        playerView.player = exo
         exo.setMediaItem(MediaItem.fromUri(android.net.Uri.fromFile(File(filePath))))
         exo.prepare()
         exo.playWhenReady = true
-    }
-
-    private fun finishWithError(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-        finish()
     }
 
     override fun onStop() {
@@ -100,8 +112,6 @@ class PlayerActivity : AppCompatActivity() {
         super.onDestroy()
         player?.release()
         player = null
-        // Wipe the content key from memory the moment playback is done -
-        // no reason for decrypted key material to linger any longer than it must.
         contentKey?.let { NativeCrypto.shamm_wipe(it, NativeCrypto.KEY_LEN) }
         contentKey = null
     }

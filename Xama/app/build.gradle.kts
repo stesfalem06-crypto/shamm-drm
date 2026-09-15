@@ -47,6 +47,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.viewpager2:viewpager2:1.1.0")
     implementation("com.google.android.material:material:1.12.0")
+    implementation("androidx.cardview:cardview:1.0.0")
 
     // ExoPlayer (via the current Media3 artifact name) - the base for a
     // fast, stable player; we hook our decrypting DataSource into it rather

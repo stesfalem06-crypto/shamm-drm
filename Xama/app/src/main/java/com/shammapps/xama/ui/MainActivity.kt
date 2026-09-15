@@ -3,6 +3,7 @@ package com.shammapps.xama.ui
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -39,6 +40,13 @@ class MainActivity : AppCompatActivity() {
         val all = repository.loadIncoming() + repository.loadPlain()
         val list = findViewById<RecyclerView>(R.id.videoList)
         val empty = findViewById<View>(R.id.emptyState)
+        val countText = findViewById<TextView>(R.id.videoCountText)
+
+        countText.text = when (all.size) {
+            0 -> ""
+            1 -> "1 video"
+            else -> "${all.size} videos"
+        }
 
         if (all.isEmpty()) {
             list.visibility = View.GONE

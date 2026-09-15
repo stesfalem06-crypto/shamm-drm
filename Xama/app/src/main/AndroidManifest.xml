@@ -25,6 +25,7 @@
         <activity
             android:name=".ui.PlayerActivity"
             android:exported="false"
+            android:theme="@style/Theme.Xama.Player"
             android:screenOrientation="unspecified"
             android:configChanges="orientation|screenSize|keyboardHidden"/>
 

@@ -4,6 +4,15 @@
         <item name="colorPrimaryDark">#12121A</item>
         <item name="colorAccent">#7C5CFF</item>
         <item name="android:windowBackground">#12121A</item>
-        <item name="android:statusBarColor">#12121A</item>
+        <item name="android:statusBarColor">#1C1C28</item>
+        <item name="android:navigationBarColor">#12121A</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.Xama.Player" parent="Theme.Xama">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
     </style>
 </resources>
