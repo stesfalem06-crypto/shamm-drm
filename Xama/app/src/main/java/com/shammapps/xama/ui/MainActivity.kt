@@ -2,6 +2,7 @@ package com.shammapps.xama.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -17,7 +18,6 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_FILE_PATH = "file_path"
         const val EXTRA_IS_ENCRYPTED = "is_encrypted"
         const val EXTRA_IV_BASE64 = "iv_base64"
-        /** Reels screen gets the whole vertical set so swiping moves between clips. */
         const val EXTRA_START_INDEX = "start_index"
     }
 
@@ -32,24 +32,28 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Picks up anything X Seller pushed over USB while the app was in the background.
         loadLibrary()
     }
 
     private fun loadLibrary() {
         val all = repository.loadIncoming() + repository.loadPlain()
         val list = findViewById<RecyclerView>(R.id.videoList)
+        val empty = findViewById<View>(R.id.emptyState)
+
+        if (all.isEmpty()) {
+            list.visibility = View.GONE
+            empty.visibility = View.VISIBLE
+            return
+        }
+
+        list.visibility = View.VISIBLE
+        empty.visibility = View.GONE
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = VideoAdapter(all) { video -> openVideo(video, all) }
     }
 
     private fun openVideo(video: LocalVideo, all: List<LocalVideo>) {
         if (video.isVertical) {
-            // Route into the swipeable Reels-style feed, positioned at the
-            // tapped clip, limited to the other vertical videos in the library.
-            // We pass IDs (not the LocalVideo objects) and let ReelsActivity
-            // reload full details itself, keeping LocalVideo a plain data
-            // class with no Parcelable/Serializable ceremony.
             val verticalOnly = all.filter { it.isVertical }
             val startIndex = verticalOnly.indexOf(video).coerceAtLeast(0)
             val intent = Intent(this, ReelsActivity::class.java)

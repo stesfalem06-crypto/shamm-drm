@@ -13,8 +13,6 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<VideoMetadata> _library = new();
     private string? _selectedFile;
 
-    // All encrypted output lives here. In a later phase this becomes
-    // configurable and syncs into X Seller's local library folder.
     private readonly string _outputDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XamaMaster", "Library");
 
@@ -23,11 +21,20 @@ public partial class MainWindow : Window
         InitializeComponent();
         Directory.CreateDirectory(_outputDir);
         LibraryList.ItemsSource = _library;
+        _library.CollectionChanged += (_, _) => UpdateEmptyState();
         LoadExistingLibrary();
+        UpdateEmptyState();
+    }
+
+    private void UpdateEmptyState()
+    {
+        LibraryEmpty.Visibility = _library.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void LoadExistingLibrary()
     {
+        _library.Clear();
+        if (!Directory.Exists(_outputDir)) return;
         foreach (var metaFile in Directory.GetFiles(_outputDir, "*.shammmeta"))
         {
             try
@@ -36,16 +43,19 @@ public partial class MainWindow : Window
                 var meta = System.Text.Json.JsonSerializer.Deserialize<VideoMetadata>(json);
                 if (meta != null) _library.Add(meta);
             }
-            catch { /* skip unreadable/corrupt metadata rather than crash the app */ }
+            catch { /* skip corrupt */ }
         }
-        StatusText.Text = $"Loaded {_library.Count} video(s) from library.";
+        StatusText.Text = _library.Count == 0
+            ? "Ready. Encrypt your first video to start the catalog."
+            : $"Loaded {_library.Count} video(s) from library.";
+        UpdateEmptyState();
     }
 
     private void ChooseFile_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog
         {
-            Filter = "Video files (*.mp4;*.mkv;*.mov;*.avi)|*.mp4;*.mkv;*.mov;*.avi|All files|*.*",
+            Filter = "Video files (*.mp4;*.mkv;*.mov;*.avi;*.webm)|*.mp4;*.mkv;*.mov;*.avi;*.webm|All files|*.*",
             Title = "Select a video to encrypt"
         };
         if (dlg.ShowDialog() == true)
@@ -57,7 +67,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Encrypt_Click(object sender, RoutedEventArgs e)
+    private async void Encrypt_Click(object sender, RoutedEventArgs e)
     {
         if (_selectedFile == null)
         {
@@ -72,16 +82,22 @@ public partial class MainWindow : Window
         var title = string.IsNullOrWhiteSpace(TitleBox.Text)
             ? Path.GetFileNameWithoutExtension(_selectedFile)
             : TitleBox.Text.Trim();
+        var isVertical = VerticalCheck.IsChecked == true;
+        var source = _selectedFile;
 
         try
         {
-            StatusText.Text = "Encrypting... this can take a while for large files.";
-            IsEnabled = false;
+            EncryptButton.IsEnabled = false;
+            ProgressPanel.Visibility = Visibility.Visible;
+            ProgressLabel.Text = $"Encrypting \"{title}\"… this can take a while for large files.";
+            StatusText.Text = ProgressLabel.Text;
 
-            var meta = _encryptor.EncryptVideo(_selectedFile, title, price, _outputDir, VerticalCheck.IsChecked == true);
+            var meta = await Task.Run(() =>
+                _encryptor.EncryptVideo(source, title, price, _outputDir, isVertical));
 
             _library.Add(meta);
-            StatusText.Text = $"Encrypted \"{meta.Title}\" — {meta.TokenPrice} token(s). Ready to distribute to shops.";
+            UpdateEmptyState();
+            StatusText.Text = $"Encrypted \"{meta.Title}\" — {meta.TokenPrice} token(s) · {meta.FormatLabel}. Ready to distribute to shops.";
             _selectedFile = null;
             TitleBox.Text = "";
             PriceBox.Text = "1";
@@ -93,7 +109,8 @@ public partial class MainWindow : Window
         }
         finally
         {
-            IsEnabled = true;
+            ProgressPanel.Visibility = Visibility.Collapsed;
+            EncryptButton.IsEnabled = true;
         }
     }
 

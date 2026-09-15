@@ -5,21 +5,48 @@
     android:orientation="horizontal"
     android:background="@color/bg_panel"
     android:padding="16dp"
-    android:layout_marginBottom="8dp">
+    android:layout_marginBottom="8dp"
+    android:gravity="center_vertical">
 
-    <TextView
-        android:id="@+id/titleText"
+    <!-- Accent bar as visual marker -->
+    <View
+        android:id="@+id/accentBar"
+        android:layout_width="4dp"
+        android:layout_height="36dp"
+        android:background="@color/accent"
+        android:layout_marginEnd="14dp"/>
+
+    <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:textColor="@color/text_primary"
-        android:textSize="16sp"/>
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/titleText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:maxLines="2"
+            android:ellipsize="end"/>
+
+        <TextView
+            android:id="@+id/subtitleText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_muted"
+            android:textSize="12sp"
+            android:layout_marginTop="2dp"/>
+    </LinearLayout>
 
     <TextView
         android:id="@+id/badgeText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textColor="@color/accent"
-        android:textSize="12sp"/>
-
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:layout_marginStart="8dp"/>
 </LinearLayout>

@@ -14,17 +14,12 @@ public partial class MainWindow : Window
     private readonly TransferService _transfer;
     private readonly SettlementExporter _settlement;
 
-    // Simple, first-run-editable shop identity so exports/invoices are
-    // labeled sensibly. Stored as plain text next to the ledger - not
-    // secret, just a label.
     private readonly string _shopNamePath;
     private string _shopName = "Shop";
 
     private List<VideoMetadata> _allVideos = new();
     private List<ConnectedDevice> _connectedDevices = new();
 
-    // Shop's local copy of the library, delivered from the company however
-    // videos physically reach the shop (USB drive from Xama Master, etc.)
     private readonly string _libraryDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XSeller", "Library");
 
@@ -38,10 +33,12 @@ public partial class MainWindow : Window
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XSeller", "shopname.txt");
         LoadOrPromptShopName();
         _settlement = new SettlementExporter(_ledger, _shopName);
+        ShopNameText.Text = $"·  {_shopName}";
 
         LoadLibrary();
         RefreshDevices();
         RefreshDebt();
+        UpdateSearchPlaceholder();
     }
 
     private void LoadOrPromptShopName()
@@ -51,8 +48,6 @@ public partial class MainWindow : Window
             var saved = File.ReadAllText(_shopNamePath).Trim();
             if (!string.IsNullOrWhiteSpace(saved)) { _shopName = saved; return; }
         }
-        // Defaults to the PC's machine name - good enough to tell shops
-        // apart on sight; edit Documents\XSeller\shopname.txt to rename.
         _shopName = Environment.MachineName;
         Directory.CreateDirectory(Path.GetDirectoryName(_shopNamePath)!);
         File.WriteAllText(_shopNamePath, _shopName);
@@ -68,44 +63,71 @@ public partial class MainWindow : Window
                 var meta = JsonSerializer.Deserialize<VideoMetadata>(File.ReadAllText(metaFile));
                 if (meta != null) _allVideos.Add(meta);
             }
-            catch { /* skip unreadable metadata rather than crash */ }
+            catch { /* skip */ }
         }
-        ResultsList.ItemsSource = _allVideos;
-        StatusText.Text = $"Library loaded: {_allVideos.Count} video(s). Drop new .shammvid/.shammmeta pairs into " +
-                           $"Documents\\XSeller\\Library to make them sellable.";
+        ApplyFilter(SearchBox.Text);
+        StatusText.Text = _allVideos.Count == 0
+            ? "Library empty — copy packages from Xama Master into Documents\\XSeller\\Library."
+            : $"Loaded {_allVideos.Count} video(s). Type to search.";
     }
 
-    // Instant filter-as-you-type, the way "Everything" search feels.
+    private void ApplyFilter(string? query)
+    {
+        var q = (query ?? "").Trim();
+        IEnumerable<VideoMetadata> filtered = _allVideos;
+        if (!string.IsNullOrEmpty(q))
+        {
+            filtered = _allVideos.Where(v =>
+                (v.Title?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (v.VideoId?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+        var list = filtered.ToList();
+        ResultsList.ItemsSource = list;
+        LibraryEmpty.Visibility = list.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateSearchPlaceholder()
+    {
+        SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        var q = SearchBox.Text.Trim();
-        ResultsList.ItemsSource = string.IsNullOrEmpty(q)
-            ? _allVideos
-            : _allVideos.Where(v => v.Title.Contains(q, StringComparison.OrdinalIgnoreCase)
-                                     || v.VideoId.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+        UpdateSearchPlaceholder();
+        ApplyFilter(SearchBox.Text);
     }
-
-    private void RefreshDevices_Click(object sender, RoutedEventArgs e) => RefreshDevices();
 
     private void RefreshDevices()
     {
         try
         {
             _connectedDevices = _adb.ListDevices();
-            DevicesList.ItemsSource = _connectedDevices.Select(d => $"{d.Model}  ({d.Serial})").ToList();
-            StatusText.Text = _connectedDevices.Count == 0
-                ? "No phones detected. Plug in a phone with USB debugging enabled."
-                : $"{_connectedDevices.Count} phone(s) connected.";
+            DevicesList.ItemsSource = _connectedDevices
+                .Select(d => $"{d.Model}  ({d.Serial})")
+                .ToList();
+            DevicesEmpty.Visibility = _connectedDevices.Count == 0
+                ? Visibility.Visible : Visibility.Collapsed;
+            if (_connectedDevices.Count > 0)
+                StatusText.Text = $"{_connectedDevices.Count} phone(s) connected.";
+            else
+                StatusText.Text = "No phone detected. Enable USB debugging, plug in, then Refresh.";
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Couldn't reach ADB: {ex.Message}";
+            _connectedDevices = new();
+            DevicesList.ItemsSource = null;
+            DevicesEmpty.Visibility = Visibility.Visible;
+            StatusText.Text = $"Could not list devices: {ex.Message}";
         }
     }
 
+    private void RefreshDevices_Click(object sender, RoutedEventArgs e) => RefreshDevices();
+
     private void RefreshDebt()
     {
-        DebtText.Text = $"{_ledger.GetOutstandingDebt()} tokens";
+        var debt = _ledger.GetOutstandingDebt();
+        DebtText.Text = $"{debt} token{(debt == 1 ? "" : "s")}";
     }
 
     private void ExportForAgent_Click(object sender, RoutedEventArgs e)
@@ -145,7 +167,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Send_Click(object sender, RoutedEventArgs e)
+    private async void Send_Click(object sender, RoutedEventArgs e)
     {
         if (ResultsList.SelectedItem is not VideoMetadata video)
         {
@@ -154,7 +176,7 @@ public partial class MainWindow : Window
         }
         if (DevicesList.SelectedIndex < 0 || DevicesList.SelectedIndex >= _connectedDevices.Count)
         {
-            StatusText.Text = "Select a connected phone first.";
+            StatusText.Text = "Select a connected phone first. If none appear, enable USB debugging and Refresh.";
             return;
         }
         var device = _connectedDevices[DevicesList.SelectedIndex];
@@ -167,9 +189,13 @@ public partial class MainWindow : Window
 
         try
         {
-            IsEnabled = false;
-            StatusText.Text = $"Sending \"{video.Title}\" to {device.Model}...";
-            _transfer.SendVideo(video, shammvidPath, device);
+            SendButton.IsEnabled = false;
+            ProgressPanel.Visibility = Visibility.Visible;
+            ProgressLabel.Text = $"Sending \"{video.Title}\" to {device.Model}…";
+            StatusText.Text = ProgressLabel.Text;
+
+            await Task.Run(() => _transfer.SendVideo(video, shammvidPath, device));
+
             RefreshDebt();
             StatusText.Text = $"Sent \"{video.Title}\" to {device.Model}. +{video.TokenPrice} token(s) added to the tab.";
         }
@@ -179,7 +205,8 @@ public partial class MainWindow : Window
         }
         finally
         {
-            IsEnabled = true;
+            ProgressPanel.Visibility = Visibility.Collapsed;
+            SendButton.IsEnabled = true;
         }
     }
 }

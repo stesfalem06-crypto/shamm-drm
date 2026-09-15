@@ -4,13 +4,13 @@
              StartupUri="MainWindow.xaml">
     <Application.Resources>
         <ResourceDictionary>
-            <!-- Modern dark palette: deep charcoal background, indigo accent -->
             <SolidColorBrush x:Key="BgDark" Color="#12121A"/>
             <SolidColorBrush x:Key="BgPanel" Color="#1C1C28"/>
             <SolidColorBrush x:Key="Accent" Color="#7C5CFF"/>
             <SolidColorBrush x:Key="AccentSoft" Color="#2A2440"/>
             <SolidColorBrush x:Key="TextPrimary" Color="#F2F2F7"/>
             <SolidColorBrush x:Key="TextMuted" Color="#8E8E9C"/>
+            <SolidColorBrush x:Key="Danger" Color="#F87171"/>
 
             <Style TargetType="Button" x:Key="PrimaryButton">
                 <Setter Property="Background" Value="{StaticResource Accent}"/>
@@ -22,9 +22,17 @@
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="bd" Property="Opacity" Value="0.45"/>
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="bd" Property="Opacity" Value="0.9"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
@@ -36,6 +44,18 @@
                 <Setter Property="BorderBrush" Value="#33334A"/>
                 <Setter Property="Padding" Value="10,8"/>
                 <Setter Property="CaretBrush" Value="{StaticResource Accent}"/>
+            </Style>
+
+            <Style TargetType="PasswordBox">
+                <Setter Property="Background" Value="{StaticResource BgPanel}"/>
+                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                <Setter Property="BorderBrush" Value="#33334A"/>
+                <Setter Property="Padding" Value="10,8"/>
+                <Setter Property="CaretBrush" Value="{StaticResource Accent}"/>
+            </Style>
+
+            <Style TargetType="CheckBox">
+                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
             </Style>
         </ResourceDictionary>
     </Application.Resources>
