@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/playerRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000"
@@ -12,9 +13,46 @@
         android:layout_height="match_parent"
         app:use_controller="true"
         app:controller_layout_id="@layout/exo_player_control_view"
-        app:show_timeout="3000"
+        app:show_timeout="4000"
         app:hide_on_touch="true"
         app:resize_mode="fit"
-        app:surface_type="surface_view"/>
+        app:surface_type="surface_view"
+        app:animation_enabled="true"/>
 
+    <!-- Gesture feedback pill -->
+    <TextView
+        android:id="@+id/gestureHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:background="@drawable/play_circle_bg"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:visibility="gone"/>
+
+    <!-- Locked overlay: only unlock visible -->
+    <FrameLayout
+        android:id="@+id/lockOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true">
+        <ImageButton
+            android:id="@+id/btn_unlock"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="36dp"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/play_circle_bg"
+            android:src="@drawable/ic_lock"
+            android:contentDescription="Unlock"
+            android:padding="12dp"/>
+    </FrameLayout>
 </FrameLayout>

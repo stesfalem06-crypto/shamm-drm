@@ -10,18 +10,52 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:resize_mode="zoom"
-        app:use_controller="false"/>
+        app:use_controller="false"
+        app:surface_type="surface_view"/>
 
-    <TextView
-        android:id="@+id/reelTitleText"
-        android:layout_width="wrap_content"
+    <!-- Bottom gradient + title -->
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|start"
-        android:layout_margin="24dp"
-        android:textColor="#FFFFFF"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:shadowColor="#000000"
-        android:shadowRadius="6"/>
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:background="@drawable/player_bottom_gradient"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="28dp"
+        android:paddingTop="48dp">
 
+        <TextView
+            android:id="@+id/reelTitleText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:shadowColor="#000000"
+            android:shadowRadius="8"/>
+
+        <TextView
+            android:id="@+id/reelHintText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Swipe up for next"
+            android:textColor="#99FFFFFF"
+            android:textSize="12sp"/>
+    </LinearLayout>
+
+    <!-- Thin progress at very bottom -->
+    <ProgressBar
+        android:id="@+id/reelProgress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_gravity="bottom"
+        android:max="1000"
+        android:progress="0"
+        android:progressTint="#7C5CFF"
+        android:progressBackgroundTint="#33FFFFFF"/>
 </FrameLayout>

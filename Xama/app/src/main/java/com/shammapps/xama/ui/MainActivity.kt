@@ -5,7 +5,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,7 +32,12 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_START_INDEX = "start_index"
     }
 
+    private enum class Filter { ALL, PROTECTED, REELS, PHONE }
+
     private lateinit var repository: VideoRepository
+    private var allVideos: List<LocalVideo> = emptyList()
+    private var filter = Filter.ALL
+    private var query = ""
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -37,24 +45,61 @@ class MainActivity : AppCompatActivity() {
         if (!granted) {
             Toast.makeText(
                 this,
-                "Storage permission needed to list videos on this phone. Protected USB videos still work.",
+                "Allow video access to browse phone videos. Protected USB titles still work.",
                 Toast.LENGTH_LONG
             ).show()
         }
-        loadLibrary()
+        reload()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         repository = VideoRepository(this)
+
+        findViewById<EditText>(R.id.searchInput).addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                query = s?.toString()?.trim().orEmpty()
+                applyFilter()
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+
+        bindChip(R.id.chipAll, Filter.ALL)
+        bindChip(R.id.chipProtected, Filter.PROTECTED)
+        bindChip(R.id.chipReels, Filter.REELS)
+        bindChip(R.id.chipPhone, Filter.PHONE)
+
         ensureMediaPermissionThenLoad()
     }
 
     override fun onResume() {
         super.onResume()
-        // Refresh so newly transferred USB videos and new device files appear
-        if (::repository.isInitialized) loadLibrary()
+        if (::repository.isInitialized) reload()
+    }
+
+    private fun bindChip(id: Int, f: Filter) {
+        findViewById<TextView>(id).setOnClickListener {
+            filter = f
+            styleChips()
+            applyFilter()
+        }
+    }
+
+    private fun styleChips() {
+        fun style(id: Int, selected: Boolean) {
+            val v = findViewById<TextView>(id)
+            v.setBackgroundResource(if (selected) R.drawable.chip_selected else R.drawable.chip_unselected)
+            v.setTextColor(
+                if (selected) 0xFFFFFFFF.toInt()
+                else ContextCompat.getColor(this, R.color.text_muted)
+            )
+        }
+        style(R.id.chipAll, filter == Filter.ALL)
+        style(R.id.chipProtected, filter == Filter.PROTECTED)
+        style(R.id.chipReels, filter == Filter.REELS)
+        style(R.id.chipPhone, filter == Filter.PHONE)
     }
 
     private fun ensureMediaPermissionThenLoad() {
@@ -63,43 +108,57 @@ class MainActivity : AppCompatActivity() {
         } else {
             Manifest.permission.READ_EXTERNAL_STORAGE
         }
-        when {
-            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED ->
-                loadLibrary()
-            else -> permissionLauncher.launch(permission)
+        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
+            reload()
+        } else {
+            permissionLauncher.launch(permission)
         }
     }
 
-    private fun loadLibrary() {
-        val all = repository.loadAll()
-        val list = findViewById<RecyclerView>(R.id.videoList)
+    private fun reload() {
+        allVideos = repository.loadAll()
+        styleChips()
+        applyFilter()
+    }
+
+    private fun applyFilter() {
+        var list = allVideos
+        list = when (filter) {
+            Filter.ALL -> list
+            Filter.PROTECTED -> list.filter { it.isEncrypted }
+            Filter.REELS -> list.filter { it.isVertical }
+            Filter.PHONE -> list.filter { !it.isEncrypted }
+        }
+        if (query.isNotEmpty()) {
+            list = list.filter { it.title.contains(query, ignoreCase = true) }
+        }
+
+        val recycler = findViewById<RecyclerView>(R.id.videoList)
         val empty = findViewById<View>(R.id.emptyState)
         val countText = findViewById<TextView>(R.id.videoCountText)
 
-        val protectedCount = all.count { it.isEncrypted }
+        val protectedCount = allVideos.count { it.isEncrypted }
         countText.text = when {
-            all.isEmpty() -> ""
-            protectedCount > 0 -> "${all.size} videos · $protectedCount protected"
-            all.size == 1 -> "1 video"
-            else -> "${all.size} videos"
+            allVideos.isEmpty() -> ""
+            protectedCount > 0 -> "${allVideos.size} · $protectedCount protected"
+            else -> "${allVideos.size} videos"
         }
 
-        if (all.isEmpty()) {
-            list.visibility = View.GONE
+        if (list.isEmpty()) {
+            recycler.visibility = View.GONE
             empty.visibility = View.VISIBLE
-            return
+        } else {
+            recycler.visibility = View.VISIBLE
+            empty.visibility = View.GONE
+            recycler.layoutManager = LinearLayoutManager(this)
+            recycler.adapter = VideoAdapter(list) { video -> openVideo(video, list) }
         }
-
-        list.visibility = View.VISIBLE
-        empty.visibility = View.GONE
-        list.layoutManager = LinearLayoutManager(this)
-        list.adapter = VideoAdapter(all) { video -> openVideo(video, all) }
     }
 
-    private fun openVideo(video: LocalVideo, all: List<LocalVideo>) {
+    private fun openVideo(video: LocalVideo, visible: List<LocalVideo>) {
         if (video.isVertical) {
-            val verticalOnly = all.filter { it.isVertical }
-            val startIndex = verticalOnly.indexOf(video).coerceAtLeast(0)
+            val verticalOnly = allVideos.filter { it.isVertical }
+            val startIndex = verticalOnly.indexOfFirst { it.id == video.id }.coerceAtLeast(0)
             val intent = Intent(this, ReelsActivity::class.java)
             intent.putExtra(EXTRA_START_INDEX, startIndex)
             intent.putStringArrayListExtra("video_ids", ArrayList(verticalOnly.map { it.id }))

@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@color/bg_dark"
     android:fitsSystemWindows="true">
 
-    <!-- Top app bar -->
+    <!-- App bar -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="56dp"
@@ -17,7 +16,6 @@
         android:paddingEnd="16dp"
         android:background="@color/bg_panel"
         android:elevation="4dp">
-
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -26,7 +24,6 @@
             android:textColor="@color/text_primary"
             android:textSize="22sp"
             android:textStyle="bold"/>
-
         <TextView
             android:id="@+id/videoCountText"
             android:layout_width="wrap_content"
@@ -34,6 +31,75 @@
             android:textColor="@color/text_muted"
             android:textSize="13sp"/>
     </LinearLayout>
+
+    <!-- Search -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_margin="12dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/search_bg"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp">
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_search"
+            android:contentDescription="Search"/>
+        <EditText
+            android:id="@+id/searchInput"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:background="@null"
+            android:hint="Search videos…"
+            android:textColorHint="@color/text_muted"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp"
+            android:inputType="text"
+            android:imeOptions="actionSearch"
+            android:maxLines="1"/>
+    </LinearLayout>
+
+    <!-- Filter chips -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="8dp">
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <TextView android:id="@+id/chipAll" android:layout_width="wrap_content"
+                android:layout_height="32dp" android:gravity="center"
+                android:paddingStart="16dp" android:paddingEnd="16dp"
+                android:text="All" android:textColor="#FFFFFF" android:textSize="13sp"
+                android:textStyle="bold" android:background="@drawable/chip_selected"
+                android:layout_marginEnd="8dp"/>
+            <TextView android:id="@+id/chipProtected" android:layout_width="wrap_content"
+                android:layout_height="32dp" android:gravity="center"
+                android:paddingStart="16dp" android:paddingEnd="16dp"
+                android:text="Protected" android:textColor="@color/text_muted" android:textSize="13sp"
+                android:background="@drawable/chip_unselected"
+                android:layout_marginEnd="8dp"/>
+            <TextView android:id="@+id/chipReels" android:layout_width="wrap_content"
+                android:layout_height="32dp" android:gravity="center"
+                android:paddingStart="16dp" android:paddingEnd="16dp"
+                android:text="Reels" android:textColor="@color/text_muted" android:textSize="13sp"
+                android:background="@drawable/chip_unselected"
+                android:layout_marginEnd="8dp"/>
+            <TextView android:id="@+id/chipPhone" android:layout_width="wrap_content"
+                android:layout_height="32dp" android:gravity="center"
+                android:paddingStart="16dp" android:paddingEnd="16dp"
+                android:text="On phone" android:textColor="@color/text_muted" android:textSize="13sp"
+                android:background="@drawable/chip_unselected"/>
+        </LinearLayout>
+    </HorizontalScrollView>
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -45,12 +111,11 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:paddingTop="8dp"
+            android:paddingTop="4dp"
             android:paddingBottom="16dp"
             android:paddingStart="12dp"
             android:paddingEnd="12dp"/>
 
-        <!-- Empty state -->
         <LinearLayout
             android:id="@+id/emptyState"
             android:layout_width="match_parent"
@@ -59,34 +124,20 @@
             android:gravity="center"
             android:padding="32dp"
             android:visibility="gone">
-
             <TextView
-                android:layout_width="64dp"
-                android:layout_height="64dp"
-                android:gravity="center"
-                android:text="▶"
-                android:textSize="36sp"
-                android:textColor="@color/accent"
-                android:background="@drawable/play_circle_bg"/>
-
+                android:layout_width="72dp" android:layout_height="72dp"
+                android:gravity="center" android:text="▶" android:textSize="32sp"
+                android:textColor="@color/accent" android:background="@drawable/play_circle_bg"/>
             <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
-                android:text="No videos yet"
-                android:textColor="@color/text_primary"
-                android:textSize="20sp"
-                android:textStyle="bold"/>
-
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginTop="20dp" android:text="No videos found"
+                android:textColor="@color/text_primary" android:textSize="20sp" android:textStyle="bold"/>
             <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:text="Grant video access to see movies on this phone.\nProtected titles from a shop also appear here after a USB transfer.\n\nIf the list is empty: allow the permission, or check Files / Gallery for videos."
-                android:textColor="@color/text_muted"
-                android:textSize="14sp"
-                android:lineSpacingExtra="3dp"
-                android:gravity="center"/>
+                android:text="Allow video access to browse files on this phone.\nProtected titles appear after a shop USB transfer."
+                android:textColor="@color/text_muted" android:textSize="14sp"
+                android:lineSpacingExtra="3dp" android:gravity="center"/>
         </LinearLayout>
     </FrameLayout>
 </LinearLayout>
