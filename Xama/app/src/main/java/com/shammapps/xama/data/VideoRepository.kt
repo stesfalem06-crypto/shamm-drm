@@ -11,16 +11,12 @@ import java.io.File
 class VideoRepository(private val context: Context) {
     private val gson = Gson()
 
-    /** All videos: protected (USB) first, then device MediaStore, then app plain folder. */
     fun loadAll(): List<LocalVideo> {
         val protected = loadIncoming()
         val device = loadDeviceVideos()
         val appPlain = loadAppPlain()
-
-        // Avoid duplicates: if the same path appears in device scan and app plain, keep one.
         val seen = HashSet<String>()
-        val out = ArrayList<LocalVideo>(protected.size + device.size + appPlain.size)
-
+        val out = ArrayList<LocalVideo>()
         fun addAll(list: List<LocalVideo>) {
             for (v in list) {
                 val key = v.filePath.ifEmpty { v.contentUri ?: v.id }
@@ -33,11 +29,18 @@ class VideoRepository(private val context: Context) {
         return out
     }
 
-    /** Encrypted videos pushed in by X Seller over USB. */
+    fun loadFolders(videos: List<LocalVideo> = loadAll()): List<VideoFolder> {
+        return videos
+            .groupBy { it.folderName.ifBlank { "Other" } }
+            .map { (name, list) -> VideoFolder(name, list.size, list.sortedByDescending { it.durationMs }) }
+            .sortedWith(compareByDescending<VideoFolder> { it.name == "Protected" }
+                .thenByDescending { it.videoCount }
+                .thenBy { it.name.lowercase() })
+    }
+
     fun loadIncoming(): List<LocalVideo> {
         val dir = File(context.getExternalFilesDir(null), "incoming")
         if (!dir.exists()) return emptyList()
-
         return dir.listFiles { f -> f.extension == "shammmeta" }?.mapNotNull { metaFile ->
             try {
                 val meta = gson.fromJson(metaFile.readText(), ShammMeta::class.java)
@@ -50,6 +53,7 @@ class VideoRepository(private val context: Context) {
                     isEncrypted = true,
                     ivBase64 = meta.IvBase64,
                     isVertical = meta.IsVertical,
+                    folderName = "Protected",
                 )
             } catch (e: Exception) {
                 null
@@ -57,11 +61,9 @@ class VideoRepository(private val context: Context) {
         } ?: emptyList()
     }
 
-    /** Plain videos in app-private plain/ folder (optional shop drops). */
     fun loadAppPlain(): List<LocalVideo> {
         val dir = File(context.getExternalFilesDir(null), "plain")
         if (!dir.exists()) return emptyList()
-
         return dir.listFiles { f -> f.extension.lowercase() in VIDEO_EXTS }?.map { f ->
             LocalVideo(
                 id = "plain-${f.name}",
@@ -69,14 +71,11 @@ class VideoRepository(private val context: Context) {
                 filePath = f.absolutePath,
                 isEncrypted = false,
                 isVertical = VideoOrientation.isVertical(f.absolutePath),
+                folderName = "Xama",
             )
         } ?: emptyList()
     }
 
-    /**
-     * Scans the phone for normal unencrypted videos via MediaStore
-     * (same source MX Player / Gallery use): DCIM, Movies, Download, etc.
-     */
     fun loadDeviceVideos(): List<LocalVideo> {
         val results = ArrayList<LocalVideo>()
         val collection: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -84,7 +83,6 @@ class VideoRepository(private val context: Context) {
         } else {
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         }
-
         val projection = arrayOf(
             MediaStore.Video.Media._ID,
             MediaStore.Video.Media.DISPLAY_NAME,
@@ -92,11 +90,9 @@ class VideoRepository(private val context: Context) {
             MediaStore.Video.Media.DURATION,
             MediaStore.Video.Media.WIDTH,
             MediaStore.Video.Media.HEIGHT,
-            MediaStore.Video.Media.SIZE,
+            MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
         )
-
         val sort = "${MediaStore.Video.Media.DATE_ADDED} DESC"
-
         try {
             context.contentResolver.query(collection, projection, null, null, sort)?.use { cursor ->
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
@@ -105,6 +101,7 @@ class VideoRepository(private val context: Context) {
                 val durCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
                 val wCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
                 val hCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
+                val bucketCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idCol)
@@ -113,13 +110,11 @@ class VideoRepository(private val context: Context) {
                     val durationMs = cursor.getLong(durCol)
                     val width = cursor.getInt(wCol)
                     val height = cursor.getInt(hCol)
+                    val bucket = cursor.getString(bucketCol)?.takeIf { it.isNotBlank() } ?: "Other"
                     val contentUri = ContentUris.withAppendedId(
                         MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id
                     ).toString()
-
-                    // Skip tiny / invalid entries
                     if (durationMs > 0 && durationMs < 500) continue
-
                     val title = name.substringBeforeLast('.').ifBlank { name }
                     results.add(
                         LocalVideo(
@@ -130,14 +125,13 @@ class VideoRepository(private val context: Context) {
                             isEncrypted = false,
                             isVertical = height > width && height > 0,
                             durationMs = durationMs,
+                            folderName = bucket,
                         )
                     )
                 }
             }
         } catch (_: SecurityException) {
-            // Permission not granted yet — caller should request it
         } catch (_: Exception) {
-            // MediaStore unavailable on some devices; fail soft
         }
         return results
     }

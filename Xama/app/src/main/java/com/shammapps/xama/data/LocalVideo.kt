@@ -5,14 +5,20 @@ import android.media.MediaMetadataRetriever
 data class LocalVideo(
     val id: String,
     val title: String,
-    /** Absolute path when available (may be empty on scoped-storage devices). */
     val filePath: String,
     val isEncrypted: Boolean,
     val ivBase64: String? = null,
     val isVertical: Boolean = false,
-    /** content:// URI from MediaStore — preferred for playback of device videos. */
     val contentUri: String? = null,
     val durationMs: Long = 0L,
+    /** Parent folder / MediaStore bucket for organization. */
+    val folderName: String = "Other",
+)
+
+data class VideoFolder(
+    val name: String,
+    val videoCount: Int,
+    val videos: List<LocalVideo>,
 )
 
 object VideoOrientation {

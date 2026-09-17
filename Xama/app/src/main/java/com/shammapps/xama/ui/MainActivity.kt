@@ -9,15 +9,18 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.shammapps.xama.R
 import com.shammapps.xama.data.LocalVideo
+import com.shammapps.xama.data.VideoFolder
 import com.shammapps.xama.data.VideoRepository
 
 class MainActivity : AppCompatActivity() {
@@ -32,22 +35,20 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_START_INDEX = "start_index"
     }
 
-    private enum class Filter { ALL, PROTECTED, REELS, PHONE }
+    private enum class Tab { HOME, FOLDERS, PROTECTED }
 
     private lateinit var repository: VideoRepository
     private var allVideos: List<LocalVideo> = emptyList()
-    private var filter = Filter.ALL
+    private var folders: List<VideoFolder> = emptyList()
+    private var tab = Tab.HOME
     private var query = ""
+    private var openFolder: VideoFolder? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (!granted) {
-            Toast.makeText(
-                this,
-                "Allow video access to browse phone videos. Protected USB titles still work.",
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(this, "Allow video access to browse folders on this phone.", Toast.LENGTH_LONG).show()
         }
         reload()
     }
@@ -61,17 +62,35 @@ class MainActivity : AppCompatActivity() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 query = s?.toString()?.trim().orEmpty()
-                applyFilter()
+                render()
             }
             override fun afterTextChanged(s: Editable?) {}
         })
 
-        bindChip(R.id.chipAll, Filter.ALL)
-        bindChip(R.id.chipProtected, Filter.PROTECTED)
-        bindChip(R.id.chipReels, Filter.REELS)
-        bindChip(R.id.chipPhone, Filter.PHONE)
+        findViewById<LinearLayout>(R.id.navHome).setOnClickListener {
+            tab = Tab.HOME
+            openFolder = null
+            updateNav()
+            render()
+        }
+        findViewById<LinearLayout>(R.id.navFolders).setOnClickListener {
+            tab = Tab.FOLDERS
+            openFolder = null
+            updateNav()
+            render()
+        }
+        findViewById<LinearLayout>(R.id.navProtected).setOnClickListener {
+            tab = Tab.PROTECTED
+            openFolder = null
+            updateNav()
+            render()
+        }
+        findViewById<TextView>(R.id.btnBackFolder).setOnClickListener {
+            openFolder = null
+            render()
+        }
 
-        ensureMediaPermissionThenLoad()
+        ensurePermission()
     }
 
     override fun onResume() {
@@ -79,30 +98,7 @@ class MainActivity : AppCompatActivity() {
         if (::repository.isInitialized) reload()
     }
 
-    private fun bindChip(id: Int, f: Filter) {
-        findViewById<TextView>(id).setOnClickListener {
-            filter = f
-            styleChips()
-            applyFilter()
-        }
-    }
-
-    private fun styleChips() {
-        fun style(id: Int, selected: Boolean) {
-            val v = findViewById<TextView>(id)
-            v.setBackgroundResource(if (selected) R.drawable.chip_selected else R.drawable.chip_unselected)
-            v.setTextColor(
-                if (selected) 0xFFFFFFFF.toInt()
-                else ContextCompat.getColor(this, R.color.text_muted)
-            )
-        }
-        style(R.id.chipAll, filter == Filter.ALL)
-        style(R.id.chipProtected, filter == Filter.PROTECTED)
-        style(R.id.chipReels, filter == Filter.REELS)
-        style(R.id.chipPhone, filter == Filter.PHONE)
-    }
-
-    private fun ensureMediaPermissionThenLoad() {
+    private fun ensurePermission() {
         val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             Manifest.permission.READ_MEDIA_VIDEO
         } else {
@@ -117,61 +113,122 @@ class MainActivity : AppCompatActivity() {
 
     private fun reload() {
         allVideos = repository.loadAll()
-        styleChips()
-        applyFilter()
+        folders = repository.loadFolders(allVideos)
+        updateNav()
+        render()
     }
 
-    private fun applyFilter() {
-        var list = allVideos
-        list = when (filter) {
-            Filter.ALL -> list
-            Filter.PROTECTED -> list.filter { it.isEncrypted }
-            Filter.REELS -> list.filter { it.isVertical }
-            Filter.PHONE -> list.filter { !it.isEncrypted }
+    private fun updateNav() {
+        fun paint(icon: Int, label: Int, selected: Boolean) {
+            val c = if (selected) R.color.accent else R.color.text_muted
+            findViewById<TextView>(icon).setTextColor(ContextCompat.getColor(this, c))
+            findViewById<TextView>(label).setTextColor(ContextCompat.getColor(this, c))
         }
-        if (query.isNotEmpty()) {
-            list = list.filter { it.title.contains(query, ignoreCase = true) }
-        }
+        paint(R.id.navHomeIcon, R.id.navHomeLabel, tab == Tab.HOME)
+        paint(R.id.navFoldersIcon, R.id.navFoldersLabel, tab == Tab.FOLDERS)
+        paint(R.id.navProtectedIcon, R.id.navProtectedLabel, tab == Tab.PROTECTED)
+    }
 
-        val recycler = findViewById<RecyclerView>(R.id.videoList)
+    private fun render() {
+        val list = findViewById<RecyclerView>(R.id.contentList)
         val empty = findViewById<View>(R.id.emptyState)
+        val backBar = findViewById<View>(R.id.folderBackBar)
+        val header = findViewById<TextView>(R.id.headerTitle)
         val countText = findViewById<TextView>(R.id.videoCountText)
 
         val protectedCount = allVideos.count { it.isEncrypted }
         countText.text = when {
             allVideos.isEmpty() -> ""
-            protectedCount > 0 -> "${allVideos.size} · $protectedCount protected"
+            protectedCount > 0 -> "${allVideos.size} videos · $protectedCount protected"
             else -> "${allVideos.size} videos"
         }
 
-        if (list.isEmpty()) {
-            recycler.visibility = View.GONE
-            empty.visibility = View.VISIBLE
-        } else {
-            recycler.visibility = View.VISIBLE
-            empty.visibility = View.GONE
-            recycler.layoutManager = LinearLayoutManager(this)
-            recycler.adapter = VideoAdapter(list) { video -> openVideo(video, list) }
+        // Folder detail mode
+        if (openFolder != null) {
+            val folder = openFolder!!
+            header.text = folder.name
+            backBar.visibility = View.VISIBLE
+            findViewById<TextView>(R.id.folderDetailTitle).text =
+                if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos"
+            list.setPadding(list.paddingLeft, (56 * resources.displayMetrics.density).toInt(), list.paddingRight, list.paddingBottom)
+            var videos = folder.videos
+            if (query.isNotEmpty()) videos = videos.filter { it.title.contains(query, true) }
+            showGrid(list, empty, videos)
+            return
+        }
+
+        backBar.visibility = View.GONE
+        list.setPadding(list.paddingLeft, (12 * resources.displayMetrics.density).toInt(), list.paddingRight, list.paddingBottom)
+
+        when (tab) {
+            Tab.HOME -> {
+                header.text = "Xama"
+                var videos = allVideos
+                if (query.isNotEmpty()) videos = videos.filter {
+                    it.title.contains(query, true) || it.folderName.contains(query, true)
+                }
+                showGrid(list, empty, videos)
+            }
+            Tab.PROTECTED -> {
+                header.text = "Protected"
+                var videos = allVideos.filter { it.isEncrypted }
+                if (query.isNotEmpty()) videos = videos.filter { it.title.contains(query, true) }
+                showGrid(list, empty, videos)
+            }
+            Tab.FOLDERS -> {
+                header.text = "Folders"
+                var folderList = folders
+                if (query.isNotEmpty()) {
+                    folderList = folderList.filter {
+                        it.name.contains(query, true) ||
+                            it.videos.any { v -> v.title.contains(query, true) }
+                    }
+                }
+                if (folderList.isEmpty()) {
+                    list.visibility = View.GONE
+                    empty.visibility = View.VISIBLE
+                } else {
+                    empty.visibility = View.GONE
+                    list.visibility = View.VISIBLE
+                    list.layoutManager = LinearLayoutManager(this)
+                    list.adapter = FolderAdapter(folderList) { folder ->
+                        openFolder = folder
+                        render()
+                    }
+                }
+            }
         }
     }
 
-    private fun openVideo(video: LocalVideo, visible: List<LocalVideo>) {
+    private fun showGrid(list: RecyclerView, empty: View, videos: List<LocalVideo>) {
+        if (videos.isEmpty()) {
+            list.visibility = View.GONE
+            empty.visibility = View.VISIBLE
+            return
+        }
+        empty.visibility = View.GONE
+        list.visibility = View.VISIBLE
+        list.layoutManager = GridLayoutManager(this, 2)
+        list.adapter = PosterAdapter(videos) { openVideo(it) }
+    }
+
+    private fun openVideo(video: LocalVideo) {
         if (video.isVertical) {
             val verticalOnly = allVideos.filter { it.isVertical }
             val startIndex = verticalOnly.indexOfFirst { it.id == video.id }.coerceAtLeast(0)
-            val intent = Intent(this, ReelsActivity::class.java)
-            intent.putExtra(EXTRA_START_INDEX, startIndex)
-            intent.putStringArrayListExtra("video_ids", ArrayList(verticalOnly.map { it.id }))
-            startActivity(intent)
+            startActivity(Intent(this, ReelsActivity::class.java).apply {
+                putExtra(EXTRA_START_INDEX, startIndex)
+                putStringArrayListExtra("video_ids", ArrayList(verticalOnly.map { it.id }))
+            })
         } else {
-            val intent = Intent(this, PlayerActivity::class.java)
-            intent.putExtra(EXTRA_VIDEO_ID, video.id)
-            intent.putExtra(EXTRA_TITLE, video.title)
-            intent.putExtra(EXTRA_FILE_PATH, video.filePath)
-            intent.putExtra(EXTRA_CONTENT_URI, video.contentUri)
-            intent.putExtra(EXTRA_IS_ENCRYPTED, video.isEncrypted)
-            intent.putExtra(EXTRA_IV_BASE64, video.ivBase64)
-            startActivity(intent)
+            startActivity(Intent(this, PlayerActivity::class.java).apply {
+                putExtra(EXTRA_VIDEO_ID, video.id)
+                putExtra(EXTRA_TITLE, video.title)
+                putExtra(EXTRA_FILE_PATH, video.filePath)
+                putExtra(EXTRA_CONTENT_URI, video.contentUri)
+                putExtra(EXTRA_IS_ENCRYPTED, video.isEncrypted)
+                putExtra(EXTRA_IV_BASE64, video.ivBase64)
+            })
         }
     }
 }

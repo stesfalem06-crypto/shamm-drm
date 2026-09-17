@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@color/bg_dark"
     android:fitsSystemWindows="true">
 
-    <!-- App bar -->
+    <!-- Header -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="56dp"
@@ -14,9 +15,9 @@
         android:gravity="center_vertical"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
-        android:background="@color/bg_panel"
-        android:elevation="4dp">
+        android:background="@color/bg_panel">
         <TextView
+            android:id="@+id/headerTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -36,15 +37,18 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="44dp"
-        android:layout_margin="12dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="6dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/search_bg"
         android:paddingStart="14dp"
         android:paddingEnd="14dp">
         <ImageView
-            android:layout_width="20dp"
-            android:layout_height="20dp"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
             android:src="@drawable/ic_search"
             android:contentDescription="Search"/>
         <EditText
@@ -54,7 +58,7 @@
             android:layout_weight="1"
             android:layout_marginStart="10dp"
             android:background="@null"
-            android:hint="Search videos…"
+            android:hint="Search movies &amp; folders…"
             android:textColorHint="@color/text_muted"
             android:textColor="@color/text_primary"
             android:textSize="15sp"
@@ -63,58 +67,49 @@
             android:maxLines="1"/>
     </LinearLayout>
 
-    <!-- Filter chips -->
-    <HorizontalScrollView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:scrollbars="none"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:paddingBottom="8dp">
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <TextView android:id="@+id/chipAll" android:layout_width="wrap_content"
-                android:layout_height="32dp" android:gravity="center"
-                android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:text="All" android:textColor="#FFFFFF" android:textSize="13sp"
-                android:textStyle="bold" android:background="@drawable/chip_selected"
-                android:layout_marginEnd="8dp"/>
-            <TextView android:id="@+id/chipProtected" android:layout_width="wrap_content"
-                android:layout_height="32dp" android:gravity="center"
-                android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:text="Protected" android:textColor="@color/text_muted" android:textSize="13sp"
-                android:background="@drawable/chip_unselected"
-                android:layout_marginEnd="8dp"/>
-            <TextView android:id="@+id/chipReels" android:layout_width="wrap_content"
-                android:layout_height="32dp" android:gravity="center"
-                android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:text="Reels" android:textColor="@color/text_muted" android:textSize="13sp"
-                android:background="@drawable/chip_unselected"
-                android:layout_marginEnd="8dp"/>
-            <TextView android:id="@+id/chipPhone" android:layout_width="wrap_content"
-                android:layout_height="32dp" android:gravity="center"
-                android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:text="On phone" android:textColor="@color/text_muted" android:textSize="13sp"
-                android:background="@drawable/chip_unselected"/>
-        </LinearLayout>
-    </HorizontalScrollView>
-
+    <!-- Content area: home grid / folders list / folder detail -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1">
 
         <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/videoList"
+            android:id="@+id/contentList"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:paddingTop="4dp"
-            android:paddingBottom="16dp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"/>
+            android:padding="12dp"/>
+
+        <!-- Folder detail back bar -->
+        <LinearLayout
+            android:id="@+id/folderBackBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="12dp"
+            android:background="@color/bg_dark"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/btnBackFolder"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="← Folders"
+                android:textColor="@color/accent"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:padding="8dp"/>
+            <TextView
+                android:id="@+id/folderDetailTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end"/>
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/emptyState"
@@ -130,14 +125,49 @@
                 android:textColor="@color/accent" android:background="@drawable/play_circle_bg"/>
             <TextView
                 android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:layout_marginTop="20dp" android:text="No videos found"
+                android:layout_marginTop="20dp" android:text="Nothing here yet"
                 android:textColor="@color/text_primary" android:textSize="20sp" android:textStyle="bold"/>
             <TextView
                 android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:text="Allow video access to browse files on this phone.\nProtected titles appear after a shop USB transfer."
+                android:text="Allow video access to browse folders on this phone.\nProtected titles appear after a shop USB transfer."
                 android:textColor="@color/text_muted" android:textSize="14sp"
-                android:lineSpacingExtra="3dp" android:gravity="center"/>
+                android:gravity="center"/>
         </LinearLayout>
     </FrameLayout>
+
+    <!-- Bottom navigation -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:orientation="horizontal"
+        android:background="@color/bg_panel"
+        android:elevation="8dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp">
+
+        <LinearLayout android:id="@+id/navHome" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+            <TextView android:id="@+id/navHomeIcon" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="⌂" android:textSize="20sp" android:textColor="@color/accent"/>
+            <TextView android:id="@+id/navHomeLabel" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Home" android:textSize="11sp" android:textColor="@color/accent" android:textStyle="bold"/>
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/navFolders" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+            <TextView android:id="@+id/navFoldersIcon" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="▣" android:textSize="20sp" android:textColor="@color/text_muted"/>
+            <TextView android:id="@+id/navFoldersLabel" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Folders" android:textSize="11sp" android:textColor="@color/text_muted"/>
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/navProtected" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+            <TextView android:id="@+id/navProtectedIcon" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="★" android:textSize="20sp" android:textColor="@color/text_muted"/>
+            <TextView android:id="@+id/navProtectedLabel" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Protected" android:textSize="11sp" android:textColor="@color/text_muted"/>
+        </LinearLayout>
+    </LinearLayout>
 </LinearLayout>
