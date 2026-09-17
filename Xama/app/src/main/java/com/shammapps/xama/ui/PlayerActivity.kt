@@ -32,6 +32,7 @@ import com.shammapps.xama.crypto.NativeCrypto
 import com.shammapps.xama.crypto.ShammKeyResolver
 import com.shammapps.xama.player.ShammDataSource
 import com.shammapps.xama.security.SecurityGuard
+import com.shammapps.xama.data.WatchHistory
 import java.io.File
 import kotlin.math.abs
 
@@ -91,6 +92,14 @@ class PlayerActivity : AppCompatActivity() {
 
         playerView.post { wireController(title) }
         setupGestures()
+
+        val historyId = when {
+            videoId.isNotBlank() -> videoId
+            !contentUri.isNullOrBlank() -> contentUri
+            filePath.isNotBlank() -> filePath
+            else -> null
+        }
+        if (historyId != null) WatchHistory.record(this, historyId)
 
         findViewById<ImageButton>(R.id.btn_unlock).setOnClickListener { setLocked(false) }
 

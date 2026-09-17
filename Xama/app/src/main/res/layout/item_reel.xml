@@ -56,6 +56,6 @@
         android:layout_gravity="bottom"
         android:max="1000"
         android:progress="0"
-        android:progressTint="#7C5CFF"
+        android:progressTint="#FF6B2C"
         android:progressBackgroundTint="#33FFFFFF"/>
 </FrameLayout>

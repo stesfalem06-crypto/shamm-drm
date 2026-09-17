@@ -108,11 +108,36 @@
                 android:orientation="vertical"
                 android:padding="12dp">
                 <include layout="@layout/item_hero"/>
+
+                <LinearLayout
+                    android:id="@+id/continueSection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    android:layout_marginBottom="8dp">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Continue watching"
+                        android:textColor="@color/text_primary"
+                        android:textSize="17sp"
+                        android:textStyle="bold"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginBottom="8dp"/>
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/continueRow"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:nestedScrollingEnabled="false"/>
+                </LinearLayout>
+
                 <TextView
                     android:id="@+id/sectionTitle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Trending on device"
+                    android:text="On this device"
                     android:textColor="@color/text_primary"
                     android:textSize="17sp"
                     android:textStyle="bold"

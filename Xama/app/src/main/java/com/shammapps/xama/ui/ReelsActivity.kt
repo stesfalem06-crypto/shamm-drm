@@ -10,6 +10,7 @@ import com.shammapps.xama.crypto.ShammKeyResolver
 import com.shammapps.xama.data.LocalVideo
 import com.shammapps.xama.data.VideoRepository
 import com.shammapps.xama.security.SecurityGuard
+import com.shammapps.xama.data.WatchHistory
 
 class ReelsActivity : AppCompatActivity() {
 
@@ -51,7 +52,9 @@ class ReelsActivity : AppCompatActivity() {
 
         pager = findViewById(R.id.reelsPager)
         pager.adapter = adapter
-        pager.setCurrentItem(startIndex.coerceIn(0, videos.size - 1), false)
+        val start = startIndex.coerceIn(0, videos.size - 1)
+        pager.setCurrentItem(start, false)
+        WatchHistory.record(this, videos[start].id)
 
         pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
@@ -61,6 +64,9 @@ class ReelsActivity : AppCompatActivity() {
                     if (holder is ReelsAdapter.ReelHolder) {
                         adapter.setPlaying(holder, i == position)
                     }
+                }
+                if (position in videos.indices) {
+                    WatchHistory.record(this@ReelsActivity, videos[position].id)
                 }
             }
         })

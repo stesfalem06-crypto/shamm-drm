@@ -27,6 +27,7 @@ import com.shammapps.xama.R
 import com.shammapps.xama.data.LocalVideo
 import com.shammapps.xama.data.VideoFolder
 import com.shammapps.xama.data.VideoRepository
+import com.shammapps.xama.data.WatchHistory
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
@@ -218,6 +219,7 @@ class MainActivity : AppCompatActivity() {
                 header.text = "Xama"
                 homeScroll.visibility = View.VISIBLE
                 bindHero()
+                bindContinue()
                 var videos = filterByCategory(allVideos)
                 if (query.isNotEmpty()) {
                     videos = videos.filter {
@@ -287,6 +289,20 @@ class MainActivity : AppCompatActivity() {
             Category.LONG -> videos.filter { !it.isVertical && it.durationMs >= 10 * 60 * 1000 }
             Category.PROTECTED -> videos.filter { it.isEncrypted }
         }
+    }
+
+
+    private fun bindContinue() {
+        val section = findViewById<View>(R.id.continueSection)
+        val row = findViewById<RecyclerView>(R.id.continueRow)
+        val recent = WatchHistory.resolve(this, allVideos)
+        if (recent.isEmpty()) {
+            section.visibility = View.GONE
+            return
+        }
+        section.visibility = View.VISIBLE
+        row.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        row.adapter = ContinueAdapter(recent) { openVideo(it) }
     }
 
     private fun bindHero() {
