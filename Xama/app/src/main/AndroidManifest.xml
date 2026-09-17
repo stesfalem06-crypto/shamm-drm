@@ -1,16 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Scan device videos (MX Player-style library). Android 13+ uses READ_MEDIA_VIDEO;
+         older versions use READ_EXTERNAL_STORAGE. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+
     <application
         android:allowBackup="false"
         android:label="Xama"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.Xama"
         android:usesCleartextTraffic="false">
-        <!-- allowBackup=false matters here: Android's auto-backup could
-             otherwise copy app-private files (including incoming encrypted
-             videos/keys) off the device via cloud backup - a piracy path
-             we explicitly close off. -->
 
         <activity
             android:name=".ui.MainActivity"

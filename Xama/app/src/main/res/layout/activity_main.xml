@@ -82,7 +82,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:text="Videos appear here after a shop sends them over USB.\n\n1. Enable Developer options\n2. Turn on USB debugging\n3. Connect and accept the PC prompt"
+                android:text="Grant video access to see movies on this phone.\nProtected titles from a shop also appear here after a USB transfer.\n\nIf the list is empty: allow the permission, or check Files / Gallery for videos."
                 android:textColor="@color/text_muted"
                 android:textSize="14sp"
                 android:lineSpacingExtra="3dp"

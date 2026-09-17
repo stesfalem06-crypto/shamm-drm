@@ -1,7 +1,9 @@
 package com.shammapps.xama.ui
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
@@ -21,6 +23,7 @@ class VideoAdapter(
 
     private val executor = Executors.newFixedThreadPool(2)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var appContext: Context? = null
 
     class VideoHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val titleText: TextView = itemView.findViewById(R.id.titleText)
@@ -28,6 +31,11 @@ class VideoAdapter(
         val badgeText: TextView = itemView.findViewById(R.id.badgeText)
         val thumbImage: ImageView = itemView.findViewById(R.id.thumbImage)
         val durationText: TextView = itemView.findViewById(R.id.durationText)
+    }
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        appContext = recyclerView.context.applicationContext
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VideoHolder {
@@ -46,32 +54,31 @@ class VideoAdapter(
             else -> "VIDEO"
         }
         holder.badgeText.text = kind
-        holder.subtitleText.text = if (video.isEncrypted) {
-            "Licensed to this device"
-        } else {
-            "Local file"
+        holder.subtitleText.text = when {
+            video.isEncrypted -> "Licensed to this device"
+            video.contentUri != null -> "On this phone"
+            else -> "Local file"
         }
 
-        // Reset thumb while loading
         holder.thumbImage.setImageDrawable(null)
         holder.thumbImage.setBackgroundResource(R.drawable.thumb_placeholder)
-        holder.durationText.visibility = View.GONE
         holder.itemView.tag = video.id
 
-        // Thumbnails only for plain files (encrypted bodies can't be probed)
+        if (video.durationMs > 0) {
+            holder.durationText.text = formatDuration(video.durationMs)
+            holder.durationText.visibility = View.VISIBLE
+        } else {
+            holder.durationText.visibility = View.GONE
+        }
+
         if (!video.isEncrypted) {
+            val ctx = appContext ?: holder.itemView.context.applicationContext
             executor.execute {
-                val pair = extractThumbAndDuration(video.filePath)
+                val bmp = extractThumb(ctx, video)
                 mainHandler.post {
-                    if (holder.itemView.tag == video.id && pair != null) {
-                        pair.first?.let {
-                            holder.thumbImage.setImageBitmap(it)
-                            holder.thumbImage.background = null
-                        }
-                        if (pair.second.isNotEmpty()) {
-                            holder.durationText.text = pair.second
-                            holder.durationText.visibility = View.VISIBLE
-                        }
+                    if (holder.itemView.tag == video.id && bmp != null) {
+                        holder.thumbImage.setImageBitmap(bmp)
+                        holder.thumbImage.background = null
                     }
                 }
             }
@@ -80,14 +87,16 @@ class VideoAdapter(
         holder.itemView.setOnClickListener { onClick(video) }
     }
 
-    private fun extractThumbAndDuration(path: String): Pair<Bitmap?, String>? {
+    private fun extractThumb(context: Context, video: LocalVideo): Bitmap? {
         val r = MediaMetadataRetriever()
         return try {
-            r.setDataSource(path)
-            val bmp = r.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            val durMs = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            val dur = if (durMs > 0) formatDuration(durMs) else ""
-            Pair(bmp, dur)
+            when {
+                !video.contentUri.isNullOrBlank() ->
+                    r.setDataSource(context, Uri.parse(video.contentUri))
+                video.filePath.isNotBlank() -> r.setDataSource(video.filePath)
+                else -> return null
+            }
+            r.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
         } catch (_: Exception) {
             null
         } finally {

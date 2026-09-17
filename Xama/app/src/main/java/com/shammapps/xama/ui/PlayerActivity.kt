@@ -1,5 +1,6 @@
 package com.shammapps.xama.ui
 
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
@@ -41,6 +42,7 @@ class PlayerActivity : AppCompatActivity() {
 
         val title = intent.getStringExtra(MainActivity.EXTRA_TITLE) ?: "Video"
         val filePath = intent.getStringExtra(MainActivity.EXTRA_FILE_PATH) ?: ""
+        val contentUri = intent.getStringExtra(MainActivity.EXTRA_CONTENT_URI)
         val isEncrypted = intent.getBooleanExtra(MainActivity.EXTRA_IS_ENCRYPTED, false)
         val ivBase64 = intent.getStringExtra(MainActivity.EXTRA_IV_BASE64)
         val videoId = intent.getStringExtra(MainActivity.EXTRA_VIDEO_ID) ?: ""
@@ -61,7 +63,7 @@ class PlayerActivity : AppCompatActivity() {
             }
             playProtected(videoId, ivBase64 ?: "", playerView)
         } else {
-            playPlain(filePath, playerView)
+            playPlain(filePath, contentUri, playerView)
         }
     }
 
@@ -94,11 +96,20 @@ class PlayerActivity : AppCompatActivity() {
         exo.playWhenReady = true
     }
 
-    private fun playPlain(filePath: String, playerView: PlayerView) {
+    private fun playPlain(filePath: String, contentUri: String?, playerView: PlayerView) {
         val exo = ExoPlayer.Builder(this).build()
         player = exo
         playerView.player = exo
-        exo.setMediaItem(MediaItem.fromUri(android.net.Uri.fromFile(File(filePath))))
+        val uri = when {
+            !contentUri.isNullOrBlank() -> Uri.parse(contentUri)
+            filePath.isNotBlank() -> Uri.fromFile(File(filePath))
+            else -> {
+                Toast.makeText(this, "Video file not found.", Toast.LENGTH_LONG).show()
+                finish()
+                return
+            }
+        }
+        exo.setMediaItem(MediaItem.fromUri(uri))
         exo.prepare()
         exo.playWhenReady = true
     }

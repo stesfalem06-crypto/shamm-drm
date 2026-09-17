@@ -17,13 +17,6 @@ import com.shammapps.xama.data.LocalVideo
 import com.shammapps.xama.player.ShammDataSource
 import java.io.File
 
-/**
- * TikTok/Reels-style vertical feed: one video per full-screen page. Each
- * page owns its own ExoPlayer instance (created on bind, released on
- * unbind) rather than sharing one player across pages - simpler to reason
- * about correctly with ViewPager2's page recycling, at the cost of a brief
- * re-buffer when swiping, which is an acceptable trade for reliability.
- */
 class ReelsAdapter(
     private val videos: List<LocalVideo>,
     private val keyResolver: ShammKeyResolver,
@@ -61,15 +54,18 @@ class ReelsAdapter(
                 .createMediaSource(MediaItem.fromUri(Uri.fromFile(resolved.videoFile)))
             exo.setMediaSource(mediaSource)
         } else {
-            exo.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(video.filePath))))
+            val uri = when {
+                !video.contentUri.isNullOrBlank() -> Uri.parse(video.contentUri)
+                video.filePath.isNotBlank() -> Uri.fromFile(File(video.filePath))
+                else -> return
+            }
+            exo.setMediaItem(MediaItem.fromUri(uri))
         }
 
-        exo.repeatMode = ExoPlayer.REPEAT_MODE_ONE // reels loop, like the real apps
+        exo.repeatMode = ExoPlayer.REPEAT_MODE_ONE
         exo.prepare()
     }
 
-    /** Called by ReelsActivity's page-change callback: only the currently
-     * visible page should actually be playing audio/video. */
     fun setPlaying(holder: ReelHolder, playing: Boolean) {
         holder.player?.playWhenReady = playing
     }

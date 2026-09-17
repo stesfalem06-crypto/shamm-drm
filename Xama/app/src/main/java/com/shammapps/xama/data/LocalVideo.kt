@@ -1,25 +1,23 @@
 package com.shammapps.xama.data
 
 import android.media.MediaMetadataRetriever
-import java.io.File
 
 data class LocalVideo(
     val id: String,
     val title: String,
+    /** Absolute path when available (may be empty on scoped-storage devices). */
     val filePath: String,
     val isEncrypted: Boolean,
     val ivBase64: String? = null,
-    /** For encrypted videos this MUST come from .shammmeta's IsVertical
-     * field (set by Xama Master before encryption) - an encrypted file's
-     * frame data can't be probed directly. Only plain/unencrypted files
-     * get auto-detected via VideoOrientation.isVertical below. */
     val isVertical: Boolean = false,
+    /** content:// URI from MediaStore — preferred for playback of device videos. */
+    val contentUri: String? = null,
+    val durationMs: Long = 0L,
 )
 
 object VideoOrientation {
-    /** True if a video's height exceeds its width - drives routing into the
-     * Reels-style vertical feed vs. the standard landscape player. */
     fun isVertical(filePath: String): Boolean {
+        if (filePath.isBlank()) return false
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(filePath)
