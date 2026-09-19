@@ -1,7 +1,7 @@
 using System.IO;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using XSeller.Models;
 using XSeller.Services;
 
@@ -9,181 +9,177 @@ namespace XSeller;
 
 public partial class MainWindow : Window
 {
+    private enum FilterKind { All, Protected, Open }
+
     private readonly AdbService _adb = new();
     private readonly LedgerDatabase _ledger = new();
     private readonly TransferService _transfer;
     private readonly SettlementExporter _settlement;
+    private readonly LibraryIndex _index = new();
 
-    private readonly string _shopNamePath;
+    private List<ConnectedDevice> _devices = new();
+    private FilterKind _filter = FilterKind.All;
     private string _shopName = "Shop";
-
-    private List<VideoMetadata> _allVideos = new();
-    private List<ConnectedDevice> _connectedDevices = new();
 
     private readonly string _libraryDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XSeller", "Library");
+    private readonly string _plainDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XSeller", "Plain");
+    private readonly string _shopNamePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XSeller", "shopname.txt");
 
     public MainWindow()
     {
         InitializeComponent();
-        _transfer = new TransferService(_adb, _ledger);
         Directory.CreateDirectory(_libraryDir);
+        Directory.CreateDirectory(_plainDir);
 
-        _shopNamePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XSeller", "shopname.txt");
-        LoadOrPromptShopName();
+        _transfer = new TransferService(_adb, _ledger);
+        LoadShopName();
         _settlement = new SettlementExporter(_ledger, _shopName);
-        ShopNameText.Text = $"·  {_shopName}";
+        ShopNameText.Text = "·  " + _shopName;
 
-        LoadLibrary();
-        RefreshDevices();
+        _index.AddRoot(_libraryDir);
+        _index.AddRoot(_plainDir);
+        // Common media locations for open files
+        TryAddUserFolder(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos));
+        TryAddUserFolder(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"));
+
+        _index.Changed += () => Dispatcher.Invoke(ApplySearch);
+        ApplySearch();
         RefreshDebt();
-        UpdateSearchPlaceholder();
+
+        _adb.DevicesChanged += devices => Dispatcher.Invoke(() => OnDevices(devices));
+        _adb.StartWatching(1200);
+        OnDevices(_adb.ListDevices());
+
+        StatusText.Text = $"Indexed {_index.Count} file(s). Type to search instantly.";
+        Closed += (_, _) => { _adb.Dispose(); _index.Dispose(); };
     }
 
-    private void LoadOrPromptShopName()
+    private void TryAddUserFolder(string? path)
     {
-        if (File.Exists(_shopNamePath))
-        {
-            var saved = File.ReadAllText(_shopNamePath).Trim();
-            if (!string.IsNullOrWhiteSpace(saved)) { _shopName = saved; return; }
-        }
-        _shopName = Environment.MachineName;
-        Directory.CreateDirectory(Path.GetDirectoryName(_shopNamePath)!);
-        File.WriteAllText(_shopNamePath, _shopName);
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path)) return;
+        try { _index.AddRoot(path); } catch { }
     }
 
-    private void LoadLibrary()
+    private void LoadShopName()
     {
-        _allVideos.Clear();
-        foreach (var metaFile in Directory.GetFiles(_libraryDir, "*.shammmeta"))
+        try
         {
-            try
+            if (File.Exists(_shopNamePath))
             {
-                var meta = JsonSerializer.Deserialize<VideoMetadata>(File.ReadAllText(metaFile));
-                if (meta != null) _allVideos.Add(meta);
+                var s = File.ReadAllText(_shopNamePath).Trim();
+                if (!string.IsNullOrWhiteSpace(s)) { _shopName = s; return; }
             }
-            catch { /* skip */ }
+            _shopName = Environment.MachineName;
+            Directory.CreateDirectory(Path.GetDirectoryName(_shopNamePath)!);
+            File.WriteAllText(_shopNamePath, _shopName);
         }
-        ApplyFilter(SearchBox.Text);
-        StatusText.Text = _allVideos.Count == 0
-            ? "Library empty — copy packages from Xama Master into Documents\\XSeller\\Library."
-            : $"Loaded {_allVideos.Count} video(s). Type to search.";
-    }
-
-    private void ApplyFilter(string? query)
-    {
-        var q = (query ?? "").Trim();
-        IEnumerable<VideoMetadata> filtered = _allVideos;
-        if (!string.IsNullOrEmpty(q))
-        {
-            filtered = _allVideos.Where(v =>
-                (v.Title?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (v.VideoId?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
-        }
-        var list = filtered.ToList();
-        ResultsList.ItemsSource = list;
-        LibraryEmpty.Visibility = list.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void UpdateSearchPlaceholder()
-    {
-        SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
-            ? Visibility.Visible : Visibility.Collapsed;
+        catch { _shopName = "Shop"; }
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        UpdateSearchPlaceholder();
-        ApplyFilter(SearchBox.Text);
+        SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
+            ? Visibility.Visible : Visibility.Collapsed;
+        ApplySearch();
     }
 
-    private void RefreshDevices()
+    private void ApplySearch()
     {
-        try
+        var q = SearchBox.Text;
+        var results = _index.Search(q);
+        results = _filter switch
         {
-            _connectedDevices = _adb.ListDevices();
-            DevicesList.ItemsSource = _connectedDevices
-                .Select(d => $"{d.Model}  ({d.Serial})")
-                .ToList();
-            DevicesEmpty.Visibility = _connectedDevices.Count == 0
-                ? Visibility.Visible : Visibility.Collapsed;
-            if (_connectedDevices.Count > 0)
-                StatusText.Text = $"{_connectedDevices.Count} phone(s) connected.";
-            else
-                StatusText.Text = "No phone detected. Enable USB debugging, plug in, then Refresh.";
-        }
-        catch (Exception ex)
-        {
-            _connectedDevices = new();
-            DevicesList.ItemsSource = null;
-            DevicesEmpty.Visibility = Visibility.Visible;
-            StatusText.Text = $"Could not list devices: {ex.Message}";
-        }
+            FilterKind.Protected => results.Where(i => i.IsEncrypted).ToList(),
+            FilterKind.Open => results.Where(i => !i.IsEncrypted).ToList(),
+            _ => results
+        };
+        ResultsList.ItemsSource = results;
+        LibraryEmpty.Visibility = results.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        IndexCountText.Text = $"{_index.Count} indexed · {results.Count} shown";
     }
 
-    private void RefreshDevices_Click(object sender, RoutedEventArgs e) => RefreshDevices();
+    private void StyleChips()
+    {
+        void Paint(Border b, bool on)
+        {
+            b.Background = new SolidColorBrush(
+                on ? Color.FromRgb(0xFF, 0x6B, 0x2C) : Color.FromRgb(0x2A, 0x2A, 0x3A));
+            if (b.Child is TextBlock tb)
+                tb.Foreground = on ? Brushes.White : new SolidColorBrush(Color.FromRgb(0x8E, 0x8E, 0x9C));
+        }
+        Paint(ChipAll, _filter == FilterKind.All);
+        Paint(ChipProtected, _filter == FilterKind.Protected);
+        Paint(ChipOpen, _filter == FilterKind.Open);
+    }
+
+    private void ChipAll_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    { _filter = FilterKind.All; StyleChips(); ApplySearch(); }
+    private void ChipProtected_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    { _filter = FilterKind.Protected; StyleChips(); ApplySearch(); }
+    private void ChipOpen_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    { _filter = FilterKind.Open; StyleChips(); ApplySearch(); }
+
+    private void OnDevices(List<ConnectedDevice> devices)
+    {
+        _devices = devices;
+        var ready = devices.Where(d => d.State == "device").ToList();
+        var unauthorized = devices.Where(d => d.State == "unauthorized").ToList();
+        DevicesList.ItemsSource = devices
+            .Select(d => d.State == "device"
+                ? $"{d.Model}  ·  ready"
+                : d.State == "unauthorized"
+                    ? $"{d.Model}  ·  tap Allow on phone"
+                    : $"{d.Model}  ·  {d.State}")
+            .ToList();
+        DevicesEmpty.Visibility = devices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (unauthorized.Count > 0)
+        {
+            DeviceBanner.Visibility = Visibility.Visible;
+            DeviceBanner.Text = "Phone detected — unlock the screen and tap Allow on the USB debugging prompt. X Seller will connect automatically.";
+        }
+        else if (ready.Count > 0)
+        {
+            DeviceBanner.Visibility = Visibility.Visible;
+            DeviceBanner.Text = $"{ready.Count} phone(s) ready. Select a video and press Send.";
+            StatusText.Text = $"{ready.Count} phone(s) connected and optimized.";
+        }
+        else
+        {
+            DeviceBanner.Visibility = Visibility.Collapsed;
+        }
+    }
 
     private void RefreshDebt()
     {
-        var debt = _ledger.GetOutstandingDebt();
-        DebtText.Text = $"{debt} token{(debt == 1 ? "" : "s")}";
-    }
-
-    private void ExportForAgent_Click(object sender, RoutedEventArgs e)
-    {
-        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "Select the USB drive to export to" };
-        if (dlg.ShowDialog() != true) return;
-
         try
         {
-            var path = _settlement.ExportForAgent(dlg.FolderName);
-            StatusText.Text = $"Exported ledger for the agent: {Path.GetFileName(path)}";
+            var debt = _ledger.GetOutstandingDebt();
+            DebtText.Text = $"{debt} token{(debt == 1 ? "" : "s")}";
         }
-        catch (Exception ex)
-        {
-            StatusText.Text = $"Export failed: {ex.Message}";
-        }
-    }
-
-    private void ImportSettlement_Click(object sender, RoutedEventArgs e)
-    {
-        var dlg = new Microsoft.Win32.OpenFileDialog
-        {
-            Filter = "Settlement files (*.shammack)|*.shammack",
-            Title = "Select the settlement file from the agent's USB drive"
-        };
-        if (dlg.ShowDialog() != true) return;
-
-        try
-        {
-            var count = _settlement.ApplySettlementAck(dlg.FileName);
-            RefreshDebt();
-            StatusText.Text = $"Applied settlement: {count} sale(s) marked paid. Outstanding balance updated.";
-        }
-        catch (Exception ex)
-        {
-            StatusText.Text = $"Import failed: {ex.Message}";
-        }
+        catch { DebtText.Text = "0 tokens"; }
     }
 
     private async void Send_Click(object sender, RoutedEventArgs e)
     {
-        if (ResultsList.SelectedItem is not VideoMetadata video)
+        if (ResultsList.SelectedItem is not LibraryItem item)
         {
-            StatusText.Text = "Select a video from the list first.";
+            StatusText.Text = "Select a video in the list first.";
             return;
         }
-        if (DevicesList.SelectedIndex < 0 || DevicesList.SelectedIndex >= _connectedDevices.Count)
+        var ready = _devices.Where(d => d.State == "device").ToList();
+        if (DevicesList.SelectedIndex < 0 || DevicesList.SelectedIndex >= _devices.Count)
         {
-            StatusText.Text = "Select a connected phone first. If none appear, enable USB debugging and Refresh.";
+            StatusText.Text = "Select a connected phone. If none appear, enable USB debugging once and tap Allow.";
             return;
         }
-        var device = _connectedDevices[DevicesList.SelectedIndex];
-        var shammvidPath = Path.Combine(_libraryDir, $"{video.VideoId}.shammvid");
-        if (!File.Exists(shammvidPath))
+        var device = _devices[DevicesList.SelectedIndex];
+        if (device.State != "device")
         {
-            StatusText.Text = "Encrypted video file missing from library folder.";
+            StatusText.Text = "That phone is not authorized yet — unlock it and tap Allow.";
             return;
         }
 
@@ -191,13 +187,17 @@ public partial class MainWindow : Window
         {
             SendButton.IsEnabled = false;
             ProgressPanel.Visibility = Visibility.Visible;
-            ProgressLabel.Text = $"Sending \"{video.Title}\" to {device.Model}…";
+            ProgressLabel.Text = item.IsEncrypted
+                ? $"Locking & sending \"{item.Title}\" to {device.Model}…"
+                : $"Sending open file \"{item.Title}\" to {device.Model}…";
             StatusText.Text = ProgressLabel.Text;
 
-            await Task.Run(() => _transfer.SendVideo(video, shammvidPath, device));
+            await Task.Run(() => _transfer.Send(item, device));
 
-            RefreshDebt();
-            StatusText.Text = $"Sent \"{video.Title}\" to {device.Model}. +{video.TokenPrice} token(s) added to the tab.";
+            if (item.IsEncrypted) RefreshDebt();
+            StatusText.Text = item.IsEncrypted
+                ? $"Sent protected \"{item.Title}\" · +{item.TokenPrice} token(s). Plays only on this phone in Xama."
+                : $"Sent open \"{item.Title}\" · available in Xama and other players.";
         }
         catch (Exception ex)
         {
@@ -208,5 +208,65 @@ public partial class MainWindow : Window
             ProgressPanel.Visibility = Visibility.Collapsed;
             SendButton.IsEnabled = true;
         }
+    }
+
+    private void CopyUsb_Click(object sender, RoutedEventArgs e)
+    {
+        if (ResultsList.SelectedItem is not LibraryItem item)
+        {
+            StatusText.Text = "Select a video first.";
+            return;
+        }
+        var wpf = new Microsoft.Win32.OpenFolderDialog { Title = "Select USB drive or folder" };
+        if (wpf.ShowDialog() != true) return;
+        try
+        {
+            _transfer.CopyToFolder(item, wpf.FolderName);
+            StatusText.Text = item.IsEncrypted
+                ? $"Copied protected package to {wpf.FolderName} (includes metadata)."
+                : $"Copied open file to {wpf.FolderName}.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Copy failed: {ex.Message}";
+        }
+    }
+
+    private void AddFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "Add folder to search index" };
+        if (dlg.ShowDialog() != true) return;
+        _index.AddRoot(dlg.FolderName);
+        ApplySearch();
+        StatusText.Text = $"Indexing {dlg.FolderName}… {_index.Count} files in index.";
+    }
+
+    private void ExportForAgent_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "Select USB drive for ledger export" };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            var path = _settlement.ExportForAgent(dlg.FolderName);
+            StatusText.Text = $"Exported ledger: {Path.GetFileName(path)}";
+        }
+        catch (Exception ex) { StatusText.Text = $"Export failed: {ex.Message}"; }
+    }
+
+    private void ImportSettlement_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "Settlement (*.shammack)|*.shammack",
+            Title = "Import settlement acknowledgment"
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            var n = _settlement.ApplySettlementAck(dlg.FileName);
+            RefreshDebt();
+            StatusText.Text = $"Settlement applied: {n} sale(s) marked paid.";
+        }
+        catch (Exception ex) { StatusText.Text = $"Import failed: {ex.Message}"; }
     }
 }

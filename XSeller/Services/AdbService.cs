@@ -1,102 +1,188 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 
 namespace XSeller.Services;
 
-public record ConnectedDevice(string Serial, string Model);
+public record ConnectedDevice(string Serial, string Model, string State);
 
 /// <summary>
-/// Wraps the standard Android "adb" tool (bundled in platform-tools/ next
-/// to XSeller.exe by the GitHub Actions build - see build-xseller.yml).
-/// ADB is Google's own official USB debugging bridge; using it instead of
-/// hand-rolling USB protocol code is both far more reliable and something
-/// every Android phone already supports once USB debugging is turned on.
+/// ADB bridge. Continuously watches for phones; once the user taps "Allow"
+/// on the RSA prompt we auto-apply shop-friendly settings.
 ///
-/// One thing the shop owner must do once per phone: enable "USB debugging"
-/// in the phone's Developer Options and accept the one-time "Allow this
-/// computer?" prompt. Xama's first-run screen (Phase 4) walks the end user
-/// through this so it isn't a mystery.
+/// Note: Android does NOT allow a PC to turn on USB debugging the first time
+/// without Developer options — that is a platform security rule. After the
+/// user enables it once and accepts this computer, we keep the session
+/// optimized automatically.
 /// </summary>
-public class AdbService
+public class AdbService : IDisposable
 {
     private readonly string _adbPath;
+    private readonly object _gate = new();
+    private CancellationTokenSource? _watchCts;
+    private List<ConnectedDevice> _last = new();
+
+    public event Action<List<ConnectedDevice>>? DevicesChanged;
 
     public AdbService()
     {
         var baseDir = AppDomain.CurrentDomain.BaseDirectory;
         _adbPath = Path.Combine(baseDir, "platform-tools", "adb.exe");
+        if (!File.Exists(_adbPath))
+            _adbPath = "adb"; // PATH fallback for dev machines
+    }
+
+    public void StartServer()
+    {
+        try { Run("start-server"); } catch { /* adb missing */ }
+    }
+
+    public void StartWatching(int intervalMs = 1500)
+    {
+        StopWatching();
+        _watchCts = new CancellationTokenSource();
+        var token = _watchCts.Token;
+        Task.Run(async () =>
+        {
+            StartServer();
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    var devices = ListDevices();
+                    var changed = devices.Count != _last.Count ||
+                                  devices.Select(d => d.Serial + d.State)
+                                      .Except(_last.Select(d => d.Serial + d.State)).Any();
+                    if (changed)
+                    {
+                        var newlyAuthorized = devices
+                            .Where(d => d.State == "device")
+                            .Where(d => _last.All(x => x.Serial != d.Serial) ||
+                                        _last.Any(x => x.Serial == d.Serial && x.State != "device"))
+                            .ToList();
+                        _last = devices;
+                        DevicesChanged?.Invoke(devices);
+                        foreach (var d in newlyAuthorized)
+                            TryOptimizeDevice(d.Serial);
+                    }
+                }
+                catch { /* transient adb */ }
+                try { await Task.Delay(intervalMs, token); } catch { break; }
+            }
+        }, token);
+    }
+
+    public void StopWatching()
+    {
+        try { _watchCts?.Cancel(); } catch { }
+        _watchCts = null;
     }
 
     public List<ConnectedDevice> ListDevices()
     {
         var devices = new List<ConnectedDevice>();
-        var output = Run("devices -l");
+        string output;
+        try { output = Run("devices -l"); }
+        catch { return devices; }
+
         foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1))
         {
             var trimmed = line.Trim();
-            if (string.IsNullOrWhiteSpace(trimmed) || !trimmed.Contains("device")) continue;
-            var serial = trimmed.Split(' ')[0];
-            var model = "Unknown model";
+            if (string.IsNullOrWhiteSpace(trimmed)) continue;
+            var parts = trimmed.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) continue;
+            var serial = parts[0];
+            var state = parts[1]; // device | unauthorized | offline | recovery
+            var model = "Phone";
             var modelIdx = trimmed.IndexOf("model:", StringComparison.Ordinal);
             if (modelIdx >= 0)
             {
                 var rest = trimmed[(modelIdx + 6)..];
-                model = rest.Split(' ')[0];
+                model = rest.Split(' ')[0].Replace('_', ' ');
             }
-            devices.Add(new ConnectedDevice(serial, model));
+            devices.Add(new ConnectedDevice(serial, model, state));
         }
         return devices;
     }
 
     /// <summary>
-    /// Builds this phone's hardware fingerprint the exact same way Xama
-    /// will rebuild it locally at playback time: SHA-256(Android ID +
-    /// hardware serial + primary ABI). Must never drift from Xama's own
-    /// copy of this logic (Android/app/.../DeviceFingerprint.kt).
+    /// Best-effort settings once ADB is authorized. Cannot enable USB
+    /// debugging itself (Android security); optimizes an already-authorized session.
     /// </summary>
+    public void TryOptimizeDevice(string serial)
+    {
+        try
+        {
+            // Keep screen on while charging — shop transfers don't sleep mid-push
+            Run($"-s {serial} shell settings put global stay_on_while_plugged_in 3");
+        }
+        catch { }
+        try
+        {
+            // Confirm adb stays enabled for this session
+            Run($"-s {serial} shell settings put global adb_enabled 1");
+        }
+        catch { }
+    }
+
     public byte[] GetHardwareFingerprint(string deviceSerial)
     {
         var androidId = Run($"-s {deviceSerial} shell settings get secure android_id").Trim();
         var serial = Run($"-s {deviceSerial} shell getprop ro.serialno").Trim();
         var abi = Run($"-s {deviceSerial} shell getprop ro.product.cpu.abi").Trim();
-
-        var combined = $"{androidId}|{serial}|{abi}";
-        using var sha = System.Security.Cryptography.SHA256.Create();
-        return sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(combined));
+        if (string.IsNullOrWhiteSpace(androidId)) androidId = "unknown";
+        if (string.IsNullOrWhiteSpace(serial)) serial = deviceSerial;
+        if (string.IsNullOrWhiteSpace(abi)) abi = "armeabi-v7a";
+        var payload = Encoding.UTF8.GetBytes($"{androidId}|{serial}|{abi}");
+        return System.Security.Cryptography.SHA256.HashData(payload);
     }
 
-    /// <summary>
-    /// Pushes a file into Xama's protected app-private storage on the
-    /// phone (not the public Downloads/Movies folder), so the encrypted
-    /// video and its wrapped key never sit somewhere a file manager or
-    /// another app can casually copy them from.
-    /// </summary>
-    public void PushToDevice(string deviceSerial, string localPath, string remoteFileName)
+    public void PushToDevice(string serial, string localPath, string remoteFileName)
     {
-        const string remoteDir = "/sdcard/Android/data/com.shammapps.xama/files/incoming";
-        Run($"-s {deviceSerial} shell mkdir -p {remoteDir}");
-        Run($"-s {deviceSerial} push \"{localPath}\" \"{remoteDir}/{remoteFileName}\"");
+        // App-private incoming folder used by Xama
+        var remoteDir = "/sdcard/Android/data/com.shammapps.xama/files/incoming";
+        Run($"-s {serial} shell mkdir -p \"{remoteDir}\"");
+        var remote = $"{remoteDir}/{remoteFileName}";
+        Run($"-s {serial} push \"{localPath}\" \"{remote}\"");
     }
 
-    private string Run(string args)
+    public void PushPlainToDevice(string serial, string localPath, string remoteFileName)
     {
-        if (!File.Exists(_adbPath))
-            throw new FileNotFoundException(
-                "adb.exe not found next to XSeller.exe. This should be bundled automatically " +
-                "by the build - if it's missing, re-download the latest X Seller build.", _adbPath);
-
-        var psi = new ProcessStartInfo
+        var remoteDir = "/sdcard/Android/data/com.shammapps.xama/files/plain";
+        Run($"-s {serial} shell mkdir -p \"{remoteDir}\"");
+        // Also drop a copy into public Movies for any player
+        var publicDir = "/sdcard/Movies/Xama";
+        Run($"-s {serial} shell mkdir -p \"{publicDir}\"");
+        Run($"-s {serial} push \"{localPath}\" \"{remoteDir}/{remoteFileName}\"");
+        try
         {
-            FileName = _adbPath,
-            Arguments = args,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        using var proc = Process.Start(psi)!;
-        var stdout = proc.StandardOutput.ReadToEnd();
-        proc.WaitForExit(15000);
-        return stdout;
+            Run($"-s {serial} push \"{localPath}\" \"{publicDir}/{remoteFileName}\"");
+        }
+        catch { /* public path may be restricted on some OEMs */ }
     }
+
+    public string Run(string args)
+    {
+        lock (_gate)
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = _adbPath,
+                Arguments = args,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using var p = Process.Start(psi) ?? throw new InvalidOperationException("Could not start adb.");
+            var stdout = p.StandardOutput.ReadToEnd();
+            var stderr = p.StandardError.ReadToEnd();
+            p.WaitForExit(120_000);
+            if (p.ExitCode != 0 && string.IsNullOrWhiteSpace(stdout))
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(stderr) ? $"adb failed: {args}" : stderr.Trim());
+            return stdout;
+        }
+    }
+
+    public void Dispose() => StopWatching();
 }
