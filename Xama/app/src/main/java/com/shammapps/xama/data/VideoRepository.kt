@@ -16,10 +16,10 @@ class VideoRepository(private val context: Context) {
         val device = loadDeviceVideos()
         val appPlain = loadAppPlain()
         val seen = HashSet<String>()
-        val out = ArrayList<LocalVideo>()
+        val out = ArrayList<LocalVideo>(protected.size + device.size + appPlain.size)
         fun addAll(list: List<LocalVideo>) {
             for (v in list) {
-                val key = v.filePath.ifEmpty { v.contentUri ?: v.id }
+                val key = v.contentUri ?: v.filePath.ifEmpty { v.id }
                 if (seen.add(key)) out.add(v)
             }
         }
@@ -32,10 +32,12 @@ class VideoRepository(private val context: Context) {
     fun loadFolders(videos: List<LocalVideo> = loadAll()): List<VideoFolder> {
         return videos
             .groupBy { it.folderName.ifBlank { "Other" } }
-            .map { (name, list) -> VideoFolder(name, list.size, list.sortedByDescending { it.durationMs }) }
-            .sortedWith(compareByDescending<VideoFolder> { it.name == "Protected" }
-                .thenByDescending { it.videoCount }
-                .thenBy { it.name.lowercase() })
+            .map { (name, list) -> VideoFolder(name, list.size, list) }
+            .sortedWith(
+                compareByDescending<VideoFolder> { it.name == "Protected" }
+                    .thenByDescending { it.videoCount }
+                    .thenBy { it.name.lowercase() }
+            )
     }
 
     fun loadIncoming(): List<LocalVideo> {
@@ -55,7 +57,7 @@ class VideoRepository(private val context: Context) {
                     isVertical = meta.IsVertical,
                     folderName = "Protected",
                 )
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             }
         } ?: emptyList()
@@ -70,56 +72,69 @@ class VideoRepository(private val context: Context) {
                 title = f.nameWithoutExtension,
                 filePath = f.absolutePath,
                 isEncrypted = false,
-                isVertical = VideoOrientation.isVertical(f.absolutePath),
+                isVertical = false,
                 folderName = "Xama",
             )
         } ?: emptyList()
     }
 
-    fun loadDeviceVideos(): List<LocalVideo> {
+    /** MediaStore scan — capped so huge libraries don't freeze the UI thread. */
+    fun loadDeviceVideos(limit: Int = 400): List<LocalVideo> {
         val results = ArrayList<LocalVideo>()
         val collection: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         } else {
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         }
-        val projection = arrayOf(
-            MediaStore.Video.Media._ID,
-            MediaStore.Video.Media.DISPLAY_NAME,
-            MediaStore.Video.Media.DATA,
-            MediaStore.Video.Media.DURATION,
-            MediaStore.Video.Media.WIDTH,
-            MediaStore.Video.Media.HEIGHT,
-            MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
-        )
+        // Avoid DATA column on modern Android (slow / restricted)
+        val projection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            arrayOf(
+                MediaStore.Video.Media._ID,
+                MediaStore.Video.Media.DISPLAY_NAME,
+                MediaStore.Video.Media.DURATION,
+                MediaStore.Video.Media.WIDTH,
+                MediaStore.Video.Media.HEIGHT,
+                MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
+            )
+        } else {
+            arrayOf(
+                MediaStore.Video.Media._ID,
+                MediaStore.Video.Media.DISPLAY_NAME,
+                MediaStore.Video.Media.DATA,
+                MediaStore.Video.Media.DURATION,
+                MediaStore.Video.Media.WIDTH,
+                MediaStore.Video.Media.HEIGHT,
+                MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
+            )
+        }
         val sort = "${MediaStore.Video.Media.DATE_ADDED} DESC"
         try {
             context.contentResolver.query(collection, projection, null, null, sort)?.use { cursor ->
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
                 val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
-                val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
                 val durCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
                 val wCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
                 val hCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
                 val bucketCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
+                val dataCol = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q)
+                    cursor.getColumnIndex(MediaStore.Video.Media.DATA) else -1
 
-                while (cursor.moveToNext()) {
+                while (cursor.moveToNext() && results.size < limit) {
                     val id = cursor.getLong(idCol)
                     val name = cursor.getString(nameCol) ?: "Video"
-                    val path = try { cursor.getString(dataCol) } catch (_: Exception) { null } ?: ""
                     val durationMs = cursor.getLong(durCol)
+                    if (durationMs in 1 until 500) continue
                     val width = cursor.getInt(wCol)
                     val height = cursor.getInt(hCol)
                     val bucket = cursor.getString(bucketCol)?.takeIf { it.isNotBlank() } ?: "Other"
+                    val path = if (dataCol >= 0) try { cursor.getString(dataCol) ?: "" } catch (_: Exception) { "" } else ""
                     val contentUri = ContentUris.withAppendedId(
                         MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id
                     ).toString()
-                    if (durationMs > 0 && durationMs < 500) continue
-                    val title = name.substringBeforeLast('.').ifBlank { name }
                     results.add(
                         LocalVideo(
                             id = "ms-$id",
-                            title = title,
+                            title = name.substringBeforeLast('.').ifBlank { name },
                             filePath = path,
                             contentUri = contentUri,
                             isEncrypted = false,

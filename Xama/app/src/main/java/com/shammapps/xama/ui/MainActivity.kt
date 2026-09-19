@@ -16,6 +16,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -28,6 +29,7 @@ import com.shammapps.xama.data.LocalVideo
 import com.shammapps.xama.data.VideoFolder
 import com.shammapps.xama.data.VideoRepository
 import com.shammapps.xama.data.WatchHistory
+import com.shammapps.xama.util.ThumbLoader
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
@@ -53,7 +55,8 @@ class MainActivity : AppCompatActivity() {
     private var query = ""
     private var openFolder: VideoFolder? = null
     private var featured: LocalVideo? = null
-    private val thumbExecutor = Executors.newSingleThreadExecutor()
+    private var loading = false
+    private val loadExecutor = Executors.newSingleThreadExecutor()
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -61,13 +64,36 @@ class MainActivity : AppCompatActivity() {
         if (!granted) {
             Toast.makeText(this, "Allow video access to browse folders on this phone.", Toast.LENGTH_LONG).show()
         }
-        reload()
+        reloadAsync()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         repository = VideoRepository(this)
+
+        // Back: folder detail → folders list; otherwise leave app only from root
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                when {
+                    openFolder != null -> {
+                        openFolder = null
+                        tab = Tab.FOLDERS
+                        updateNav()
+                        render()
+                    }
+                    tab != Tab.HOME -> {
+                        tab = Tab.HOME
+                        updateNav()
+                        render()
+                    }
+                    else -> {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                    }
+                }
+            }
+        })
 
         findViewById<EditText>(R.id.searchInput).addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -98,7 +124,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::repository.isInitialized) reload()
+        // Only refresh continue row / light update — full rescan is expensive
+        if (::repository.isInitialized && allVideos.isNotEmpty()) {
+            render()
+        }
     }
 
     private fun switchTab(t: Tab) {
@@ -123,24 +152,43 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.READ_EXTERNAL_STORAGE
         }
         if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
-            reload()
+            reloadAsync()
         } else {
             permissionLauncher.launch(permission)
         }
     }
 
-    private fun reload() {
-        allVideos = repository.loadAll()
-        folders = repository.loadFolders(allVideos)
-        featured = pickFeatured(allVideos)
-        updateNav()
-        styleCategories()
-        render()
+    /** Heavy MediaStore work off the main thread to stop freezes. */
+    private fun reloadAsync() {
+        if (loading) return
+        loading = true
+        findViewById<TextView>(R.id.videoCountText).text = "Loading…"
+        loadExecutor.execute {
+            val videos = try {
+                repository.loadAll()
+            } catch (_: Exception) {
+                emptyList()
+            }
+            val folderList = try {
+                repository.loadFolders(videos)
+            } catch (_: Exception) {
+                emptyList()
+            }
+            val feat = pickFeatured(videos)
+            runOnUiThread {
+                loading = false
+                allVideos = videos
+                folders = folderList
+                featured = feat
+                updateNav()
+                styleCategories()
+                render()
+            }
+        }
     }
 
     private fun pickFeatured(videos: List<LocalVideo>): LocalVideo? {
         if (videos.isEmpty()) return null
-        // Prefer protected, else longest, else first (most recent from MediaStore order)
         return videos.firstOrNull { it.isEncrypted }
             ?: videos.maxByOrNull { it.durationMs }
             ?: videos.first()
@@ -183,13 +231,14 @@ class MainActivity : AppCompatActivity() {
         val countText = findViewById<TextView>(R.id.videoCountText)
 
         val protectedCount = allVideos.count { it.isEncrypted }
-        countText.text = when {
-            allVideos.isEmpty() -> ""
-            protectedCount > 0 -> "${allVideos.size} · $protectedCount protected"
-            else -> "${allVideos.size} videos"
+        if (!loading) {
+            countText.text = when {
+                allVideos.isEmpty() -> ""
+                protectedCount > 0 -> "${allVideos.size} · $protectedCount protected"
+                else -> "${allVideos.size} videos"
+            }
         }
 
-        // defaults
         homeScroll.visibility = View.GONE
         list.visibility = View.GONE
         profile.visibility = View.GONE
@@ -205,14 +254,25 @@ class MainActivity : AppCompatActivity() {
             categoryScroll.visibility = View.GONE
             findViewById<TextView>(R.id.folderDetailTitle).text =
                 if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos"
-            list.setPadding(list.paddingLeft, (56 * resources.displayMetrics.density).toInt(), list.paddingRight, list.paddingBottom)
+            list.setPadding(
+                list.paddingLeft,
+                (56 * resources.displayMetrics.density).toInt(),
+                list.paddingRight,
+                list.paddingBottom
+            )
             var videos = folder.videos
             if (query.isNotEmpty()) videos = videos.filter { it.title.contains(query, true) }
-            showGrid(list, empty, videos)
+            // Cap folder grid for smoothness
+            showGrid(list, empty, videos.take(200))
             return
         }
 
-        list.setPadding(list.paddingLeft, (12 * resources.displayMetrics.density).toInt(), list.paddingRight, list.paddingBottom)
+        list.setPadding(
+            list.paddingLeft,
+            (12 * resources.displayMetrics.density).toInt(),
+            list.paddingRight,
+            list.paddingBottom
+        )
 
         when (tab) {
             Tab.HOME -> {
@@ -226,9 +286,8 @@ class MainActivity : AppCompatActivity() {
                         it.title.contains(query, true) || it.folderName.contains(query, true)
                     }
                 }
-                // Don't duplicate featured in the grid
                 val featId = featured?.id
-                val grid = if (featId != null) videos.filter { it.id != featId } else videos
+                val grid = (if (featId != null) videos.filter { it.id != featId } else videos).take(60)
                 findViewById<TextView>(R.id.sectionTitle).text = when (category) {
                     Category.ALL -> "On this device"
                     Category.RECENT -> "Recently added"
@@ -242,6 +301,7 @@ class MainActivity : AppCompatActivity() {
                     empty.visibility = View.VISIBLE
                 } else {
                     homeGrid.layoutManager = GridLayoutManager(this, 2)
+                    homeGrid.setHasFixedSize(true)
                     homeGrid.adapter = PosterAdapter(grid) { openVideo(it) }
                 }
             }
@@ -265,6 +325,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     list.visibility = View.VISIBLE
                     list.layoutManager = LinearLayoutManager(this)
+                    list.setHasFixedSize(true)
                     list.adapter = FolderAdapter(folderList) { folder ->
                         openFolder = folder
                         render()
@@ -284,18 +345,17 @@ class MainActivity : AppCompatActivity() {
     private fun filterByCategory(videos: List<LocalVideo>): List<LocalVideo> {
         return when (category) {
             Category.ALL -> videos
-            Category.RECENT -> videos.take(40) // already newest-first from MediaStore
+            Category.RECENT -> videos.take(40)
             Category.REELS -> videos.filter { it.isVertical }
             Category.LONG -> videos.filter { !it.isVertical && it.durationMs >= 10 * 60 * 1000 }
             Category.PROTECTED -> videos.filter { it.isEncrypted }
         }
     }
 
-
     private fun bindContinue() {
         val section = findViewById<View>(R.id.continueSection)
         val row = findViewById<RecyclerView>(R.id.continueRow)
-        val recent = WatchHistory.resolve(this, allVideos)
+        val recent = WatchHistory.resolve(this, allVideos).take(12)
         if (recent.isEmpty()) {
             section.visibility = View.GONE
             return
@@ -337,35 +397,7 @@ class MainActivity : AppCompatActivity() {
         heroCard.setOnClickListener { openVideo(feat) }
 
         val image = findViewById<ImageView>(R.id.heroImage)
-        image.setImageDrawable(null)
-        image.setBackgroundResource(R.drawable.thumb_placeholder)
-        if (!feat.isEncrypted) {
-            thumbExecutor.execute {
-                val bmp = loadThumb(feat)
-                runOnUiThread {
-                    if (bmp != null) {
-                        image.setImageBitmap(bmp)
-                        image.background = null
-                    }
-                }
-            }
-        }
-    }
-
-    private fun loadThumb(video: LocalVideo): Bitmap? {
-        val r = MediaMetadataRetriever()
-        return try {
-            when {
-                !video.contentUri.isNullOrBlank() -> r.setDataSource(this, Uri.parse(video.contentUri))
-                video.filePath.isNotBlank() -> r.setDataSource(video.filePath)
-                else -> return null
-            }
-            r.getFrameAtTime(1_500_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-        } catch (_: Exception) {
-            null
-        } finally {
-            try { r.release() } catch (_: Exception) {}
-        }
+        ThumbLoader.load(this, feat, image, "hero-${feat.id}")
     }
 
     private fun formatDuration(ms: Long): String {
@@ -385,6 +417,7 @@ class MainActivity : AppCompatActivity() {
         empty.visibility = View.GONE
         list.visibility = View.VISIBLE
         list.layoutManager = GridLayoutManager(this, 2)
+        list.setHasFixedSize(true)
         list.adapter = PosterAdapter(videos) { openVideo(it) }
     }
 
@@ -394,7 +427,7 @@ class MainActivity : AppCompatActivity() {
             val startIndex = verticalOnly.indexOfFirst { it.id == video.id }.coerceAtLeast(0)
             startActivity(Intent(this, ReelsActivity::class.java).apply {
                 putExtra(EXTRA_START_INDEX, startIndex)
-                putStringArrayListExtra("video_ids", ArrayList(verticalOnly.map { it.id }))
+                putStringArrayListExtra("video_ids", ArrayList(verticalOnly.map { it.id }.take(100)))
             })
         } else {
             startActivity(Intent(this, PlayerActivity::class.java).apply {

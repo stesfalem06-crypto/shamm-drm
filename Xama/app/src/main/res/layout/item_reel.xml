@@ -11,9 +11,24 @@
         android:layout_height="match_parent"
         app:resize_mode="zoom"
         app:use_controller="false"
-        app:surface_type="surface_view"/>
+        app:surface_type="texture_view"/>
 
-    <!-- Bottom gradient + title -->
+    <!-- Seek hint -->
+    <TextView
+        android:id="@+id/reelSeekHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:background="@drawable/play_circle_bg"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:visibility="gone"/>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -33,21 +48,18 @@
             android:textSize="16sp"
             android:textStyle="bold"
             android:maxLines="2"
-            android:ellipsize="end"
-            android:shadowColor="#000000"
-            android:shadowRadius="8"/>
+            android:ellipsize="end"/>
 
         <TextView
             android:id="@+id/reelHintText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="Swipe up for next"
+            android:text="Double-tap sides to seek · Swipe for next"
             android:textColor="#99FFFFFF"
             android:textSize="12sp"/>
     </LinearLayout>
 
-    <!-- Thin progress at very bottom -->
     <ProgressBar
         android:id="@+id/reelProgress"
         style="?android:attr/progressBarStyleHorizontal"
