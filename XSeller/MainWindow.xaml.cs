@@ -5,6 +5,7 @@ using System.Windows.Media;
 using XSeller.Models;
 using XSeller.Services;
 
+
 namespace XSeller;
 
 public partial class MainWindow : Window
@@ -21,19 +22,13 @@ public partial class MainWindow : Window
     private FilterKind _filter = FilterKind.All;
     private string _shopName = "Shop";
 
-    private readonly string _libraryDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XSeller", "Library");
-    private readonly string _plainDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XSeller", "Plain");
-    private readonly string _shopNamePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XSeller", "shopname.txt");
+    private readonly string _libraryDir = FirstRunBootstrap.LibraryDir;
+    private readonly string _plainDir = FirstRunBootstrap.PlainDir;
+    private readonly string _shopNamePath = Path.Combine(FirstRunBootstrap.DocsRoot, "shopname.txt");
 
     public MainWindow()
     {
         InitializeComponent();
-        Directory.CreateDirectory(_libraryDir);
-        Directory.CreateDirectory(_plainDir);
-
         _transfer = new TransferService(_adb, _ledger);
         LoadShopName();
         _settlement = new SettlementExporter(_ledger, _shopName);

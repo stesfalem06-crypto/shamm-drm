@@ -26,10 +26,7 @@ public class AdbService : IDisposable
 
     public AdbService()
     {
-        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-        _adbPath = Path.Combine(baseDir, "platform-tools", "adb.exe");
-        if (!File.Exists(_adbPath))
-            _adbPath = "adb"; // PATH fallback for dev machines
+        _adbPath = FirstRunBootstrap.ResolveAdb() ?? "adb";
     }
 
     public void StartServer()

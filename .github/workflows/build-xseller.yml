@@ -40,6 +40,10 @@ jobs:
           Expand-Archive platform-tools.zip -DestinationPath publish -Force
         shell: pwsh
 
+      - name: Add one-click Install script
+        run: copy XSeller\Install-XSeller.bat publish\Install-XSeller.bat
+        shell: cmd
+
       - uses: actions/upload-artifact@v4
         with:
           name: XSeller-windows

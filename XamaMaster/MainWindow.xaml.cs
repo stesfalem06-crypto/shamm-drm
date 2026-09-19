@@ -4,6 +4,7 @@ using System.Windows;
 using Microsoft.Win32;
 using XamaMaster.Models;
 using XamaMaster.Services;
+// FirstRunBootstrap creates Library on startup
 
 namespace XamaMaster;
 
@@ -13,8 +14,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<VideoMetadata> _library = new();
     private string? _selectedFile;
 
-    private readonly string _outputDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XamaMaster", "Library");
+    private readonly string _outputDir = XamaMaster.Services.FirstRunBootstrap.LibraryDir;
 
     public MainWindow()
     {

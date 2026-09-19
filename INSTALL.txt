@@ -1,0 +1,25 @@
+SHAMM DRM — install only, then use
+==================================
+
+Windows (shop PC / company PC)
+1. Download the artifact ZIP from GitHub Actions
+2. Unzip
+3. Double-click Install-XSeller.bat   (or Install-XamaMaster.bat)
+4. Done — desktop shortcut is created and the app starts
+
+No ADB install, no SDK, no config files to edit.
+Folders are created automatically under Documents on first launch.
+ADB is bundled and started automatically when X Seller opens.
+
+Android (customer phone)
+1. Install the Xama APK
+2. Open the app and tap Allow for video access (Android requires this once)
+3. Done
+
+Phone USB (first time only per phone — Android security rule)
+- Developer options → USB debugging ON
+- Plug in → tap Allow
+X Seller then detects the phone automatically.
+
+Protected videos: only play in Xama on the phone they were sent to.
+Open videos: searchable and sendable anywhere.
