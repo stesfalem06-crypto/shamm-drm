@@ -5,8 +5,8 @@
     android:layout_width="match_parent"
     android:layout_height="200dp"
     android:layout_marginBottom="12dp"
-    app:cardBackgroundColor="@color/bg_elevated"
-    app:cardCornerRadius="18dp"
+    app:cardBackgroundColor="#1A1A1F"
+    app:cardCornerRadius="24dp"
     app:cardElevation="0dp">
 
     <FrameLayout
@@ -76,7 +76,7 @@
                     android:paddingStart="20dp"
                     android:paddingEnd="20dp"
                     android:text="▶  Play"
-                    android:textColor="#FFFFFF"
+                    android:textColor="#111111"
                     android:textSize="13sp"
                     android:textStyle="bold"
                     android:background="@drawable/hero_play_btn"/>

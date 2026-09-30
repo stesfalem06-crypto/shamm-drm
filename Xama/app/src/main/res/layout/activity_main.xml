@@ -8,21 +8,23 @@
 
     <!-- Header -->
     <LinearLayout
+        android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="64dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:background="@color/bg_panel">
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:background="@drawable/glass_bar">
         <TextView
             android:id="@+id/headerTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Xama"
+            android:fontFamily="sans-serif-medium"
             android:textColor="@color/text_primary"
-            android:textSize="22sp"
+            android:textSize="28sp"
             android:textStyle="bold"/>
         <TextView
             android:id="@+id/videoCountText"
@@ -238,7 +240,7 @@
 
                     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
                         android:layout_weight="1" android:orientation="vertical" android:gravity="center"
-                        android:background="@color/bg_elevated" android:padding="16dp"
+                        android:background="@drawable/glass_panel" android:padding="16dp"
                         android:layout_marginEnd="6dp">
                         <TextView android:id="@+id/statTotal" android:layout_width="wrap_content"
                             android:layout_height="wrap_content" android:text="0"
@@ -249,7 +251,7 @@
 
                     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
                         android:layout_weight="1" android:orientation="vertical" android:gravity="center"
-                        android:background="@color/bg_elevated" android:padding="16dp"
+                        android:background="@drawable/glass_panel" android:padding="16dp"
                         android:layout_marginStart="6dp" android:layout_marginEnd="6dp">
                         <TextView android:id="@+id/statProtected" android:layout_width="wrap_content"
                             android:layout_height="wrap_content" android:text="0"
@@ -260,7 +262,7 @@
 
                     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
                         android:layout_weight="1" android:orientation="vertical" android:gravity="center"
-                        android:background="@color/bg_elevated" android:padding="16dp"
+                        android:background="@drawable/glass_panel" android:padding="16dp"
                         android:layout_marginStart="6dp">
                         <TextView android:id="@+id/statFolders" android:layout_width="wrap_content"
                             android:layout_height="wrap_content" android:text="0"
@@ -276,7 +278,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="24dp"
                     android:padding="16dp"
-                    android:background="@color/bg_elevated"
+                    android:background="@drawable/glass_panel"
                     android:textColor="@color/text_muted"
                     android:textSize="13sp"
                     android:lineSpacingExtra="4dp"
@@ -311,13 +313,14 @@
 
     <!-- Bottom nav: Home | Folders | Protected | Profile -->
     <LinearLayout
+        android:id="@+id/bottomNavBar"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
+        android:layout_height="68dp"
         android:orientation="horizontal"
-        android:background="@color/bg_panel"
-        android:elevation="8dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp">
+        android:background="@drawable/glass_bar"
+        android:elevation="0dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
 
         <LinearLayout android:id="@+id/navHome" android:layout_width="0dp" android:layout_height="match_parent"
             android:layout_weight="1" android:orientation="vertical" android:gravity="center">

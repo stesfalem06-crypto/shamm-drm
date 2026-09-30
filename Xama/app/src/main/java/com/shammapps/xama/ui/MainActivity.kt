@@ -70,6 +70,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        Glass.applyWindow(this)
         repository = VideoRepository(this)
 
         // Back: folder detail → folders list; otherwise leave app only from root
@@ -210,7 +211,7 @@ class MainActivity : AppCompatActivity() {
         fun style(id: Int, selected: Boolean) {
             val v = findViewById<TextView>(id)
             v.setBackgroundResource(if (selected) R.drawable.chip_selected else R.drawable.chip_unselected)
-            v.setTextColor(if (selected) 0xFFFFFFFF.toInt() else ContextCompat.getColor(this, R.color.text_muted))
+            v.setTextColor(if (selected) 0xFF111111.toInt() else ContextCompat.getColor(this, R.color.text_primary))
         }
         style(R.id.catAll, category == Category.ALL)
         style(R.id.catRecent, category == Category.RECENT)
