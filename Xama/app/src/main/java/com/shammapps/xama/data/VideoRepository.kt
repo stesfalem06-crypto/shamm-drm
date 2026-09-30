@@ -41,26 +41,32 @@ class VideoRepository(private val context: Context) {
     }
 
     fun loadIncoming(): List<LocalVideo> {
-        val dir = File(context.getExternalFilesDir(null), "incoming")
-        if (!dir.exists()) return emptyList()
-        return dir.listFiles { f -> f.extension == "shammmeta" }?.mapNotNull { metaFile ->
-            try {
-                val meta = gson.fromJson(metaFile.readText(), ShammMeta::class.java)
-                val videoFile = File(dir, "${meta.VideoId}.shammvid")
-                if (!videoFile.exists()) return@mapNotNull null
-                LocalVideo(
-                    id = meta.VideoId,
-                    title = meta.Title,
-                    filePath = videoFile.absolutePath,
-                    isEncrypted = true,
-                    ivBase64 = meta.IvBase64,
-                    isVertical = meta.IsVertical,
-                    folderName = "Protected",
-                )
-            } catch (_: Exception) {
-                null
+        val dirs = com.shammapps.xama.crypto.ShammKeyResolver.incomingDirs(context)
+        val out = ArrayList<LocalVideo>()
+        val seen = HashSet<String>()
+        for (dir in dirs) {
+            if (!dir.exists()) continue
+            dir.listFiles { f -> f.extension == "shammmeta" }?.forEach { metaFile ->
+                try {
+                    val meta = gson.fromJson(metaFile.readText(), ShammMeta::class.java)
+                    val videoFile = File(dir, "${meta.VideoId}.shammvid")
+                    if (!videoFile.exists()) return@forEach
+                    if (!seen.add(meta.VideoId)) return@forEach
+                    out.add(
+                        LocalVideo(
+                            id = meta.VideoId,
+                            title = meta.Title,
+                            filePath = videoFile.absolutePath,
+                            isEncrypted = true,
+                            ivBase64 = meta.IvBase64,
+                            isVertical = meta.IsVertical,
+                            folderName = "Protected",
+                        )
+                    )
+                } catch (_: Exception) { }
             }
-        } ?: emptyList()
+        }
+        return out
     }
 
     fun loadAppPlain(): List<LocalVideo> {

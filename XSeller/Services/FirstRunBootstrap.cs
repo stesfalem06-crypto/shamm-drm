@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Reflection;
 
 namespace XSeller.Services;
 
@@ -67,13 +66,16 @@ public static class FirstRunBootstrap
 
     public static string? ResolveAdb()
     {
+        var candidates = new List<string>();
         var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-        var bundled = Path.Combine(baseDir, "platform-tools", "adb.exe");
-        if (File.Exists(bundled)) return bundled;
-        // single-file sibling
         var exeDir = Path.GetDirectoryName(Environment.ProcessPath) ?? baseDir;
-        bundled = Path.Combine(exeDir, "platform-tools", "adb.exe");
-        if (File.Exists(bundled)) return bundled;
+        candidates.Add(Path.Combine(baseDir, "platform-tools", "adb.exe"));
+        candidates.Add(Path.Combine(exeDir, "platform-tools", "adb.exe"));
+        candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XSeller", "platform-tools", "adb.exe"));
+        foreach (var c in candidates)
+        {
+            if (File.Exists(c)) return c;
+        }
         return null;
     }
 }

@@ -29,8 +29,11 @@ public class AdbService : IDisposable
         _adbPath = FirstRunBootstrap.ResolveAdb() ?? "adb";
     }
 
+    public bool AdbAvailable => File.Exists(_adbPath) || string.Equals(_adbPath, "adb", StringComparison.Ordinal);
+
     public void StartServer()
     {
+        try { Run("kill-server"); } catch { }
         try { Run("start-server"); } catch { /* adb missing */ }
     }
 
@@ -124,23 +127,45 @@ public class AdbService : IDisposable
 
     public byte[] GetHardwareFingerprint(string deviceSerial)
     {
-        var androidId = Run($"-s {deviceSerial} shell settings get secure android_id").Trim();
-        var serial = Run($"-s {deviceSerial} shell getprop ro.serialno").Trim();
-        var abi = Run($"-s {deviceSerial} shell getprop ro.product.cpu.abi").Trim();
-        if (string.IsNullOrWhiteSpace(androidId)) androidId = "unknown";
-        if (string.IsNullOrWhiteSpace(serial)) serial = deviceSerial;
-        if (string.IsNullOrWhiteSpace(abi)) abi = "armeabi-v7a";
-        var payload = Encoding.UTF8.GetBytes($"{androidId}|{serial}|{abi}");
+        // MUST match DeviceFingerprint.kt: SHA-256(androidId + "|" + abi)
+        // Serial is not used — the app cannot read ro.serialno on modern Android.
+        var androidId = NormalizeId(Run($"-s {deviceSerial} shell settings get secure android_id"));
+        var abi = NormalizeId(Run($"-s {deviceSerial} shell getprop ro.product.cpu.abi"));
+        var payload = Encoding.UTF8.GetBytes($"{androidId}|{abi}");
         return System.Security.Cryptography.SHA256.HashData(payload);
+    }
+
+    private static string NormalizeId(string raw)
+    {
+        var s = (raw ?? "").Trim().Trim('\r', '\n');
+        if (string.IsNullOrWhiteSpace(s) ||
+            s.Equals("null", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("unknown", StringComparison.OrdinalIgnoreCase))
+            return "";
+        return s;
     }
 
     public void PushToDevice(string serial, string localPath, string remoteFileName)
     {
-        // App-private incoming folder used by Xama
-        var remoteDir = "/sdcard/Android/data/com.shammapps.xama/files/incoming";
-        Run($"-s {serial} shell mkdir -p \"{remoteDir}\"");
-        var remote = $"{remoteDir}/{remoteFileName}";
-        Run($"-s {serial} push \"{localPath}\" \"{remote}\"");
+        var dirs = new[]
+        {
+            "/sdcard/Android/data/com.shammapps.xama/files/incoming",
+            "/sdcard/Download/XamaIncoming",
+            "/storage/emulated/0/Download/XamaIncoming",
+        };
+        Exception? last = null;
+        var ok = false;
+        foreach (var remoteDir in dirs)
+        {
+            try
+            {
+                Run($"-s {serial} shell mkdir -p \"{remoteDir}\"");
+                Run($"-s {serial} push \"{localPath}\" \"{remoteDir}/{remoteFileName}\"");
+                ok = true;
+            }
+            catch (Exception ex) { last = ex; }
+        }
+        if (!ok) throw last ?? new InvalidOperationException("Push failed on every path.");
     }
 
     public void PushPlainToDevice(string serial, string localPath, string remoteFileName)

@@ -33,8 +33,9 @@ object SecurityGuard {
      * frameworks detected. Playback should refuse to start when this is true.
      */
     fun isEnvironmentCompromised(activity: Activity): Boolean {
-        val rootBeer = RootBeer(activity)
-        return rootBeer.isRooted || rootBeer.isRootedWithoutBusyBoxCheck || isLikelyEmulator()
+        // RootBeer false-positives on many OEM shop phones (Tecno, Infinix, Itel).
+        // Only hard-block obvious emulators; FLAG_SECURE still blocks screenshots.
+        return isLikelyEmulator()
     }
 
     private fun isLikelyEmulator(): Boolean {

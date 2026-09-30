@@ -8,12 +8,16 @@ namespace XSeller.Services;
 /// <summary>
 /// Everything-style in-memory index of encrypted + plain videos.
 /// FileSystemWatcher keeps it fresh; Search() is pure RAM substring matching
-/// (no disk I/O on each keystroke).
+/// (no disk I/O on each keystroke). Scans run off the UI thread and are capped
+/// so a huge Downloads folder cannot freeze or crash the shop app.
 /// </summary>
 public sealed class LibraryIndex : IDisposable
 {
     private static readonly string[] VideoExts =
         [".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v", ".ts", ".flv", ".3gp"];
+
+    private const int MaxFilesPerRoot = 4000;
+    private const int MaxDepth = 6;
 
     private readonly ConcurrentDictionary<string, LibraryItem> _items = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<FileSystemWatcher> _watchers = new();
@@ -26,16 +30,37 @@ public sealed class LibraryIndex : IDisposable
 
     public IReadOnlyCollection<string> Roots => _roots;
 
-    public void AddRoot(string path)
+    /// <summary>Register a folder. Scan happens in the background unless immediate is true.</summary>
+    public void AddRoot(string path, bool scanNow = false)
     {
         if (string.IsNullOrWhiteSpace(path)) return;
         path = Path.GetFullPath(path);
-        if (!Directory.Exists(path)) Directory.CreateDirectory(path);
-        if (_roots.Any(r => string.Equals(r, path, StringComparison.OrdinalIgnoreCase))) return;
-        _roots.Add(path);
-        ScanRoot(path);
+        if (!Directory.Exists(path))
+        {
+            try { Directory.CreateDirectory(path); } catch { return; }
+        }
+        lock (_rebuildLock)
+        {
+            if (_roots.Any(r => string.Equals(r, path, StringComparison.OrdinalIgnoreCase))) return;
+            _roots.Add(path);
+        }
         AttachWatcher(path);
-        Changed?.Invoke();
+        if (scanNow) ScanRoot(path);
+        else Task.Run(() => { ScanRoot(path); Changed?.Invoke(); });
+    }
+
+    public void RebuildAsync()
+    {
+        Task.Run(() =>
+        {
+            lock (_rebuildLock)
+            {
+                _items.Clear();
+                foreach (var root in _roots.ToList())
+                    ScanRoot(root);
+            }
+            Changed?.Invoke();
+        });
     }
 
     public void Rebuild()
@@ -53,22 +78,51 @@ public sealed class LibraryIndex : IDisposable
     {
         try
         {
-            // Encrypted packages
-            foreach (var meta in Directory.EnumerateFiles(root, "*.shammmeta", SearchOption.AllDirectories))
+            foreach (var meta in EnumerateFilesCapped(root, "*.shammmeta"))
             {
                 try { IndexEncrypted(meta); } catch { /* skip bad */ }
             }
-            // Plain video files
-            foreach (var file in Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories))
+            var counted = 0;
+            foreach (var file in EnumerateFilesCapped(root, "*.*"))
             {
+                if (counted++ > MaxFilesPerRoot) break;
                 var ext = Path.GetExtension(file);
                 if (!VideoExts.Contains(ext, StringComparer.OrdinalIgnoreCase)) continue;
-                // skip if sibling is encrypted package body
                 if (file.EndsWith(".shammvid", StringComparison.OrdinalIgnoreCase)) continue;
                 try { IndexPlain(file); } catch { /* skip */ }
             }
         }
         catch { /* root may be mid-copy */ }
+    }
+
+    private static IEnumerable<string> EnumerateFilesCapped(string root, string pattern)
+    {
+        var pending = new Stack<(string Dir, int Depth)>();
+        pending.Push((root, 0));
+        var yielded = 0;
+        while (pending.Count > 0 && yielded < MaxFilesPerRoot)
+        {
+            var (dir, depth) = pending.Pop();
+            IEnumerable<string> files;
+            try { files = Directory.EnumerateFiles(dir, pattern); }
+            catch { continue; }
+            foreach (var f in files)
+            {
+                yield return f;
+                if (++yielded >= MaxFilesPerRoot) yield break;
+            }
+            if (depth >= MaxDepth) continue;
+            IEnumerable<string> subs;
+            try { subs = Directory.EnumerateDirectories(dir); }
+            catch { continue; }
+            foreach (var sub in subs)
+            {
+                var name = Path.GetFileName(sub);
+                if (name.StartsWith('.') || name.Equals("node_modules", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                pending.Push((sub, depth + 1));
+            }
+        }
     }
 
     private void IndexEncrypted(string metaPath)
@@ -146,12 +200,13 @@ public sealed class LibraryIndex : IDisposable
         {
             try
             {
-                // remove items under this root then rescan
                 foreach (var key in _items.Keys.ToList())
                 {
                     if (_items.TryGetValue(key, out var it) &&
                         it.FilePath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-                        _items.TryRemove(key, out _);
+                    {
+                        _items.TryRemove(key, out LibraryItem _);
+                    }
                 }
                 ScanRoot(root);
                 Changed?.Invoke();

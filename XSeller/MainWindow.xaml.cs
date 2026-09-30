@@ -34,13 +34,16 @@ public partial class MainWindow : Window
         _settlement = new SettlementExporter(_ledger, _shopName);
         ShopNameText.Text = "·  " + _shopName;
 
+        // Register folders immediately; heavy scans run in the background so the window stays responsive.
         _index.AddRoot(_libraryDir);
         _index.AddRoot(_plainDir);
-        // Common media locations for open files
         TryAddUserFolder(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos));
         TryAddUserFolder(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"));
+        TryAddUserFolder(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
+        TryAddUserFolder(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XamaMaster", "Library"));
 
-        _index.Changed += () => Dispatcher.Invoke(ApplySearch);
+        _index.Changed += () => Dispatcher.BeginInvoke(ApplySearch);
         ApplySearch();
         RefreshDebt();
 
