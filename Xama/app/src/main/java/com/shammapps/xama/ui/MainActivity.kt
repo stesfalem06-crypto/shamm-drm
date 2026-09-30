@@ -196,22 +196,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateNav() {
-        fun paint(icon: Int, label: Int, selected: Boolean) {
-            val c = if (selected) R.color.accent else R.color.text_muted
+        fun paint(item: Int, icon: Int, label: Int, selected: Boolean) {
+            findViewById<View>(item).setBackgroundResource(if (selected) R.drawable.nav_pill_on else R.drawable.nav_pill_off)
+            val c = if (selected) android.R.color.white else R.color.text_muted
             findViewById<TextView>(icon).setTextColor(ContextCompat.getColor(this, c))
             findViewById<TextView>(label).setTextColor(ContextCompat.getColor(this, c))
         }
-        paint(R.id.navHomeIcon, R.id.navHomeLabel, tab == Tab.HOME)
-        paint(R.id.navFoldersIcon, R.id.navFoldersLabel, tab == Tab.FOLDERS)
-        paint(R.id.navProtectedIcon, R.id.navProtectedLabel, tab == Tab.PROTECTED)
-        paint(R.id.navProfileIcon, R.id.navProfileLabel, tab == Tab.PROFILE)
+        paint(R.id.navHome, R.id.navHomeIcon, R.id.navHomeLabel, tab == Tab.HOME)
+        paint(R.id.navFolders, R.id.navFoldersIcon, R.id.navFoldersLabel, tab == Tab.FOLDERS)
+        paint(R.id.navProtected, R.id.navProtectedIcon, R.id.navProtectedLabel, tab == Tab.PROTECTED)
+        paint(R.id.navProfile, R.id.navProfileIcon, R.id.navProfileLabel, tab == Tab.PROFILE)
     }
 
     private fun styleCategories() {
         fun style(id: Int, selected: Boolean) {
             val v = findViewById<TextView>(id)
             v.setBackgroundResource(if (selected) R.drawable.chip_selected else R.drawable.chip_unselected)
-            v.setTextColor(if (selected) 0xFF111111.toInt() else ContextCompat.getColor(this, R.color.text_primary))
+            v.setTextColor(if (selected) 0xFFFFFFFF.toInt() else ContextCompat.getColor(this, R.color.text_muted))
         }
         style(R.id.catAll, category == Category.ALL)
         style(R.id.catRecent, category == Category.RECENT)
@@ -277,7 +278,7 @@ class MainActivity : AppCompatActivity() {
 
         when (tab) {
             Tab.HOME -> {
-                header.text = "Xama"
+                header.text = "Hello"
                 homeScroll.visibility = View.VISIBLE
                 bindHero()
                 bindContinue()
@@ -290,7 +291,7 @@ class MainActivity : AppCompatActivity() {
                 val featId = featured?.id
                 val grid = (if (featId != null) videos.filter { it.id != featId } else videos).take(60)
                 findViewById<TextView>(R.id.sectionTitle).text = when (category) {
-                    Category.ALL -> "On this device"
+                    Category.ALL -> "Suggested for you"
                     Category.RECENT -> "Recently added"
                     Category.REELS -> "Reels & vertical"
                     Category.LONG -> "Movies & long form"
@@ -301,7 +302,7 @@ class MainActivity : AppCompatActivity() {
                     homeScroll.visibility = View.GONE
                     empty.visibility = View.VISIBLE
                 } else {
-                    homeGrid.layoutManager = GridLayoutManager(this, 2)
+                    homeGrid.layoutManager = LinearLayoutManager(this)
                     homeGrid.setHasFixedSize(true)
                     homeGrid.adapter = PosterAdapter(grid) { openVideo(it) }
                 }
@@ -417,7 +418,7 @@ class MainActivity : AppCompatActivity() {
         }
         empty.visibility = View.GONE
         list.visibility = View.VISIBLE
-        list.layoutManager = GridLayoutManager(this, 2)
+        list.layoutManager = LinearLayoutManager(this)
         list.setHasFixedSize(true)
         list.adapter = PosterAdapter(videos) { openVideo(it) }
     }
