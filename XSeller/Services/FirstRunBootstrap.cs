@@ -34,11 +34,12 @@ public static class FirstRunBootstrap
                 "Copy .shammvid + .shammmeta packages from Xama Master into this folder.\n" +
                 "X Seller indexes them automatically.\n");
 
-        var readmePlain = Path.Combine(PlainDir, "PUT_OPEN_VIDEOS_HERE.txt");
+        var readmePlain = Path.Combine(PlainDir, "PUT_OPEN_MEDIA_HERE.txt");
         if (!File.Exists(readmePlain))
             File.WriteAllText(readmePlain,
-                "Optional: put normal (non-encrypted) videos here for fast search + send.\n" +
-                "Downloads and Videos folders are also indexed automatically.\n");
+                "Optional: put open (non-encrypted) media here for fast search + send.\n" +
+                "Supported: video, PDF, images, and .exe. Downloads / Videos / Desktop are\n" +
+                "also indexed by default (customize via Add / Remove media folder).\n");
 
         // Start ADB server silently so the first phone plug works immediately
         try

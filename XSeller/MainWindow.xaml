@@ -47,7 +47,7 @@
                      FontSize="16" VerticalContentAlignment="Center" Padding="16,0"
                      Foreground="{StaticResource TextPrimary}" CaretBrush="{StaticResource Accent}"
                      TextChanged="SearchBox_TextChanged"/>
-            <TextBlock x:Name="SearchPlaceholder" Text="Search everything — title, path, protected, open…"
+            <TextBlock x:Name="SearchPlaceholder" Text="Search everything — title, path, video, pdf, image, exe, protected…"
                        Foreground="{StaticResource TextMuted}" FontSize="15"
                        VerticalAlignment="Center" Margin="18,0,0,0" IsHitTestVisible="False"/>
         </Grid>
@@ -59,13 +59,25 @@
                         Background="{StaticResource Accent}" MouseLeftButtonUp="ChipAll_Click">
                     <TextBlock Text="All" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
                 </Border>
+                <Border x:Name="ChipVideo" Cursor="Hand" CornerRadius="16" Padding="14,6" Margin="0,0,8,0"
+                        Background="#2A2A3A" MouseLeftButtonUp="ChipVideo_Click">
+                    <TextBlock Text="Video" Foreground="{StaticResource TextMuted}" FontSize="12"/>
+                </Border>
+                <Border x:Name="ChipPdf" Cursor="Hand" CornerRadius="16" Padding="14,6" Margin="0,0,8,0"
+                        Background="#2A2A3A" MouseLeftButtonUp="ChipPdf_Click">
+                    <TextBlock Text="PDF" Foreground="{StaticResource TextMuted}" FontSize="12"/>
+                </Border>
+                <Border x:Name="ChipImage" Cursor="Hand" CornerRadius="16" Padding="14,6" Margin="0,0,8,0"
+                        Background="#2A2A3A" MouseLeftButtonUp="ChipImage_Click">
+                    <TextBlock Text="Image" Foreground="{StaticResource TextMuted}" FontSize="12"/>
+                </Border>
+                <Border x:Name="ChipExe" Cursor="Hand" CornerRadius="16" Padding="14,6" Margin="0,0,8,0"
+                        Background="#2A2A3A" MouseLeftButtonUp="ChipExe_Click">
+                    <TextBlock Text="Exe" Foreground="{StaticResource TextMuted}" FontSize="12"/>
+                </Border>
                 <Border x:Name="ChipProtected" Cursor="Hand" CornerRadius="16" Padding="14,6" Margin="0,0,8,0"
                         Background="#2A2A3A" MouseLeftButtonUp="ChipProtected_Click">
                     <TextBlock Text="Protected" Foreground="{StaticResource TextMuted}" FontSize="12"/>
-                </Border>
-                <Border x:Name="ChipOpen" Cursor="Hand" CornerRadius="16" Padding="14,6" Margin="0,0,8,0"
-                        Background="#2A2A3A" MouseLeftButtonUp="ChipOpen_Click">
-                    <TextBlock Text="Open files" Foreground="{StaticResource TextMuted}" FontSize="12"/>
                 </Border>
             </StackPanel>
             <StackPanel x:Name="ProgressPanel" Orientation="Vertical" Visibility="Collapsed" HorizontalAlignment="Right" Width="280">
@@ -99,7 +111,7 @@
                             </GridView>
                         </ListView.View>
                     </ListView>
-                    <TextBlock x:Name="LibraryEmpty" Text="No matches. Drop .shamm packages into Library or plain videos into Plain / indexed folders."
+                    <TextBlock x:Name="LibraryEmpty" Text="No matches. Drop .shamm packages into Library or media into indexed folders (video, PDF, image, exe)."
                                Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" TextAlignment="Center"
                                VerticalAlignment="Center" Margin="40" Visibility="Collapsed"/>
                 </Grid>
@@ -123,9 +135,18 @@
                         <Button Content="Import settlement" Style="{StaticResource PrimaryButton}"
                                 Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
                                 Margin="0,0,0,8" Click="ImportSettlement_Click"/>
+                        <Separator Margin="0,6,0,10" Background="#2A2A3A"/>
+                        <TextBlock Text="Media folders" FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,6"/>
+                        <ListBox x:Name="RootsList" Height="88" Margin="0,0,0,8"
+                                 Background="#12121A" BorderBrush="#2A2A3A" BorderThickness="1"
+                                 Foreground="{StaticResource TextPrimary}" FontSize="11"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
                         <Button Content="Add media folder…" Style="{StaticResource PrimaryButton}"
                                 Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
-                                Click="AddFolder_Click"/>
+                                Margin="0,0,0,6" Click="AddFolder_Click"/>
+                        <Button Content="Remove selected folder" Style="{StaticResource PrimaryButton}"
+                                Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
+                                Click="RemoveFolder_Click"/>
                     </StackPanel>
                     <Grid>
                         <ListBox x:Name="DevicesList" Background="Transparent" BorderThickness="0"

@@ -10,7 +10,7 @@ namespace XSeller;
 
 public partial class MainWindow : Window
 {
-    private enum FilterKind { All, Protected, Open }
+    private enum FilterKind { All, Video, Pdf, Image, Exe, Protected }
 
     private readonly AdbService _adb = new();
     private readonly LedgerDatabase _ledger = new();
@@ -22,8 +22,6 @@ public partial class MainWindow : Window
     private FilterKind _filter = FilterKind.All;
     private string _shopName = "Shop";
 
-    private readonly string _libraryDir = FirstRunBootstrap.LibraryDir;
-    private readonly string _plainDir = FirstRunBootstrap.PlainDir;
     private readonly string _shopNamePath = Path.Combine(FirstRunBootstrap.DocsRoot, "shopname.txt");
 
     public MainWindow()
@@ -34,16 +32,21 @@ public partial class MainWindow : Window
         _settlement = new SettlementExporter(_ledger, _shopName);
         ShopNameText.Text = "·  " + _shopName;
 
-        // Register folders immediately; heavy scans run in the background so the window stays responsive.
-        _index.AddRoot(_libraryDir);
-        _index.AddRoot(_plainDir);
-        TryAddUserFolder(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos));
-        TryAddUserFolder(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"));
-        TryAddUserFolder(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
-        TryAddUserFolder(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XamaMaster", "Library"));
+        // Load persisted roots (seeds defaults on first run). Scans run in the background.
+        foreach (var root in LibraryRootsStore.LoadOrSeed())
+            TryAddRoot(root, persist: false);
 
-        _index.Changed += () => Dispatcher.BeginInvoke(ApplySearch);
+        // Ensure canonical Library/Plain folders always exist for drops even if removed from index.
+        try { Directory.CreateDirectory(FirstRunBootstrap.LibraryDir); } catch { }
+        try { Directory.CreateDirectory(FirstRunBootstrap.PlainDir); } catch { }
+
+        _index.Changed += () => Dispatcher.BeginInvoke(() =>
+        {
+            RefreshRootsList();
+            ApplySearch();
+        });
+        RefreshRootsList();
+        StyleChips();
         ApplySearch();
         RefreshDebt();
 
@@ -55,10 +58,28 @@ public partial class MainWindow : Window
         Closed += (_, _) => { _adb.Dispose(); _index.Dispose(); };
     }
 
-    private void TryAddUserFolder(string? path)
+    private void TryAddRoot(string? path, bool persist)
     {
-        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path)) return;
-        try { _index.AddRoot(path); } catch { }
+        if (string.IsNullOrWhiteSpace(path)) return;
+        try
+        {
+            _index.AddRoot(path);
+            if (persist) PersistRoots();
+        }
+        catch { }
+    }
+
+    private void PersistRoots()
+    {
+        try { LibraryRootsStore.Save(_index.Roots); }
+        catch { /* disk full / ACL — index still works in-session */ }
+    }
+
+    private void RefreshRootsList()
+    {
+        RootsList.ItemsSource = _index.Roots
+            .Select(r => r)
+            .ToList();
     }
 
     private void LoadShopName()
@@ -90,8 +111,11 @@ public partial class MainWindow : Window
         var results = _index.Search(q);
         results = _filter switch
         {
-            FilterKind.Protected => results.Where(i => i.IsEncrypted).ToList(),
-            FilterKind.Open => results.Where(i => !i.IsEncrypted).ToList(),
+            FilterKind.Protected => results.Where(i => i.Kind == MediaKind.Protected || i.IsEncrypted).ToList(),
+            FilterKind.Video => results.Where(i => i.Kind == MediaKind.Video).ToList(),
+            FilterKind.Pdf => results.Where(i => i.Kind == MediaKind.Pdf).ToList(),
+            FilterKind.Image => results.Where(i => i.Kind == MediaKind.Image).ToList(),
+            FilterKind.Exe => results.Where(i => i.Kind == MediaKind.Exe).ToList(),
             _ => results
         };
         ResultsList.ItemsSource = results;
@@ -106,19 +130,38 @@ public partial class MainWindow : Window
             b.Background = new SolidColorBrush(
                 on ? Color.FromRgb(0xFF, 0x6B, 0x2C) : Color.FromRgb(0x2A, 0x2A, 0x3A));
             if (b.Child is TextBlock tb)
+            {
                 tb.Foreground = on ? Brushes.White : new SolidColorBrush(Color.FromRgb(0x8E, 0x8E, 0x9C));
+                tb.FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal;
+            }
         }
         Paint(ChipAll, _filter == FilterKind.All);
+        Paint(ChipVideo, _filter == FilterKind.Video);
+        Paint(ChipPdf, _filter == FilterKind.Pdf);
+        Paint(ChipImage, _filter == FilterKind.Image);
+        Paint(ChipExe, _filter == FilterKind.Exe);
         Paint(ChipProtected, _filter == FilterKind.Protected);
-        Paint(ChipOpen, _filter == FilterKind.Open);
+    }
+
+    private void SetFilter(FilterKind kind)
+    {
+        _filter = kind;
+        StyleChips();
+        ApplySearch();
     }
 
     private void ChipAll_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    { _filter = FilterKind.All; StyleChips(); ApplySearch(); }
+        => SetFilter(FilterKind.All);
+    private void ChipVideo_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        => SetFilter(FilterKind.Video);
+    private void ChipPdf_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        => SetFilter(FilterKind.Pdf);
+    private void ChipImage_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        => SetFilter(FilterKind.Image);
+    private void ChipExe_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        => SetFilter(FilterKind.Exe);
     private void ChipProtected_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    { _filter = FilterKind.Protected; StyleChips(); ApplySearch(); }
-    private void ChipOpen_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    { _filter = FilterKind.Open; StyleChips(); ApplySearch(); }
+        => SetFilter(FilterKind.Protected);
 
     private void OnDevices(List<ConnectedDevice> devices)
     {
@@ -142,7 +185,7 @@ public partial class MainWindow : Window
         else if (ready.Count > 0)
         {
             DeviceBanner.Visibility = Visibility.Visible;
-            DeviceBanner.Text = $"{ready.Count} phone(s) ready. Select a video and press Send.";
+            DeviceBanner.Text = $"{ready.Count} phone(s) ready. Select a file and press Send.";
             StatusText.Text = $"{ready.Count} phone(s) connected and optimized.";
         }
         else
@@ -165,7 +208,7 @@ public partial class MainWindow : Window
     {
         if (ResultsList.SelectedItem is not LibraryItem item)
         {
-            StatusText.Text = "Select a video in the list first.";
+            StatusText.Text = "Select a file in the list first.";
             return;
         }
         var ready = _devices.Where(d => d.State == "device").ToList();
@@ -212,7 +255,7 @@ public partial class MainWindow : Window
     {
         if (ResultsList.SelectedItem is not LibraryItem item)
         {
-            StatusText.Text = "Select a video first.";
+            StatusText.Text = "Select a file first.";
             return;
         }
         var wpf = new Microsoft.Win32.OpenFolderDialog { Title = "Select USB drive or folder" };
@@ -234,9 +277,32 @@ public partial class MainWindow : Window
     {
         var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "Add folder to search index" };
         if (dlg.ShowDialog() != true) return;
-        _index.AddRoot(dlg.FolderName);
+        var before = _index.Roots.Count;
+        TryAddRoot(dlg.FolderName, persist: true);
+        RefreshRootsList();
         ApplySearch();
-        StatusText.Text = $"Indexing {dlg.FolderName}… {_index.Count} files in index.";
+        if (_index.Roots.Count == before)
+            StatusText.Text = $"Already indexing {dlg.FolderName}.";
+        else
+            StatusText.Text = $"Indexing {dlg.FolderName}… {_index.Count} files in index.";
+    }
+
+    private void RemoveFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (RootsList.SelectedItem is not string path)
+        {
+            StatusText.Text = "Select a media folder in the list to remove.";
+            return;
+        }
+        if (!_index.RemoveRoot(path))
+        {
+            StatusText.Text = "Could not remove that folder.";
+            return;
+        }
+        PersistRoots();
+        RefreshRootsList();
+        ApplySearch();
+        StatusText.Text = $"Removed folder from index: {path}";
     }
 
     private void ExportForAgent_Click(object sender, RoutedEventArgs e)
