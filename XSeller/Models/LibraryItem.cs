@@ -1,8 +1,10 @@
+using System.IO;
+
 namespace XSeller.Models;
 
 /// <summary>
 /// Unified row in the Everything-style index: encrypted DRM packages and
-/// plain media the shop can send freely.
+/// plain media (video, PDF, image, exe) the shop can send freely.
 /// </summary>
 public class LibraryItem
 {
@@ -11,6 +13,7 @@ public class LibraryItem
     public string FilePath { get; set; } = "";
     public string? MetaPath { get; set; }
     public bool IsEncrypted { get; set; }
+    public MediaKind Kind { get; set; } = MediaKind.Other;
     public int TokenPrice { get; set; }
     public bool IsVertical { get; set; }
     public long SizeBytes { get; set; }
@@ -18,8 +21,28 @@ public class LibraryItem
     public string? IvBase64 { get; set; }
     public string? WrappedContentKeyForShopsBase64 { get; set; }
 
-    public string KindLabel => IsEncrypted ? "Protected" : "Open";
-    public string FormatLabel => IsVertical ? "Reels" : "Video";
+    public string KindLabel => Kind switch
+    {
+        MediaKind.Protected => "Protected",
+        MediaKind.Video => "Video",
+        MediaKind.Pdf => "PDF",
+        MediaKind.Image => "Image",
+        MediaKind.Exe => "Exe",
+        _ => "Open",
+    };
+
+    public string FormatLabel
+    {
+        get
+        {
+            if (IsEncrypted)
+                return IsVertical ? "Reels" : "DRM";
+            var ext = Path.GetExtension(FilePath);
+            if (string.IsNullOrEmpty(ext)) return KindLabel;
+            return ext.TrimStart('.').ToUpperInvariant();
+        }
+    }
+
     public string SizeLabel =>
         SizeBytes >= 1_073_741_824 ? $"{SizeBytes / 1_073_741_824.0:0.0} GB" :
         SizeBytes >= 1_048_576 ? $"{SizeBytes / 1_048_576.0:0.0} MB" :
