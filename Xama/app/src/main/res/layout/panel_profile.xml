@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipToPadding="false"
+    android:paddingBottom="110dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="12dp">
+
+        <!-- Identity card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/card_bg"
+            android:padding="18dp">
+            <FrameLayout
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:background="@drawable/avatar_circle">
+                <ImageView
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:layout_gravity="center"
+                    android:layout_marginStart="3dp"
+                    android:src="@drawable/ic_play"
+                    android:importantForAccessibility="no"/>
+            </FrameLayout>
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:orientation="vertical">
+                <TextView
+                    style="@style/Text.Title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="20sp"
+                    android:text="Xama"/>
+                <TextView
+                    style="@style/Text.Caption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/about_tagline"/>
+                <TextView
+                    android:id="@+id/profileVersion"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:paddingTop="2dp"
+                    android:paddingBottom="2dp"
+                    android:background="@drawable/badge_accent"
+                    android:textColor="@color/accent_light"
+                    android:textSize="11sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="v"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            style="@style/Text.Overline"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="10dp"
+            android:text="Your library"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <LinearLayout
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:orientation="vertical" android:background="@drawable/card_bg" android:padding="16dp"
+                android:layout_marginEnd="6dp">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/ic_movie"
+                    app:tint="@color/accent" android:importantForAccessibility="no"/>
+                <TextView android:id="@+id/statTotal" style="@style/Text.Display" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="0"/>
+                <TextView style="@style/Text.Caption" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Videos"/>
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:orientation="vertical" android:background="@drawable/card_bg" android:padding="16dp"
+                android:layout_marginStart="6dp">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/ic_music"
+                    app:tint="@color/accent" android:importantForAccessibility="no"/>
+                <TextView android:id="@+id/statMusic" style="@style/Text.Display" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="0"/>
+                <TextView style="@style/Text.Caption" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Tracks"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+            <LinearLayout
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:orientation="vertical" android:background="@drawable/card_bg" android:padding="16dp"
+                android:layout_marginEnd="6dp">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/ic_shield"
+                    app:tint="@color/accent" android:importantForAccessibility="no"/>
+                <TextView android:id="@+id/statProtected" style="@style/Text.Display" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="0"/>
+                <TextView style="@style/Text.Caption" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Protected"/>
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:orientation="vertical" android:background="@drawable/card_bg" android:padding="16dp"
+                android:layout_marginStart="6dp">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/ic_folder"
+                    app:tint="@color/accent" android:importantForAccessibility="no"/>
+                <TextView android:id="@+id/statFolders" style="@style/Text.Display" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="0"/>
+                <TextView style="@style/Text.Caption" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Folders"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            style="@style/Text.Overline"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="10dp"
+            android:text="Settings"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/card_bg"
+            android:padding="6dp">
+
+            <LinearLayout android:id="@+id/rowRescan" android:layout_width="match_parent" android:layout_height="60dp"
+                android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/row_ripple"
+                android:paddingStart="12dp" android:paddingEnd="12dp">
+                <FrameLayout android:layout_width="36dp" android:layout_height="36dp" android:background="@drawable/icon_tile">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center"
+                        android:src="@drawable/ic_refresh" app:tint="@color/accent" android:importantForAccessibility="no"/>
+                </FrameLayout>
+                <TextView style="@style/Text.Body" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:layout_marginStart="14dp" android:text="Rescan library"/>
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_chevron_right"
+                    app:tint="@color/text_muted" android:importantForAccessibility="no"/>
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/rowClearHistory" android:layout_width="match_parent" android:layout_height="60dp"
+                android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/row_ripple"
+                android:paddingStart="12dp" android:paddingEnd="12dp">
+                <FrameLayout android:layout_width="36dp" android:layout_height="36dp" android:background="@drawable/icon_tile">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center"
+                        android:src="@drawable/ic_delete_sweep" app:tint="@color/accent" android:importantForAccessibility="no"/>
+                </FrameLayout>
+                <TextView style="@style/Text.Body" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:layout_marginStart="14dp" android:text="Clear continue watching"/>
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_chevron_right"
+                    app:tint="@color/text_muted" android:importantForAccessibility="no"/>
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/rowAbout" android:layout_width="match_parent" android:layout_height="60dp"
+                android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/row_ripple"
+                android:paddingStart="12dp" android:paddingEnd="12dp">
+                <FrameLayout android:layout_width="36dp" android:layout_height="36dp" android:background="@drawable/icon_tile">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center"
+                        android:src="@drawable/ic_info" app:tint="@color/accent" android:importantForAccessibility="no"/>
+                </FrameLayout>
+                <TextView style="@style/Text.Body" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:layout_marginStart="14dp" android:text="About Xama"/>
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_chevron_right"
+                    app:tint="@color/text_muted" android:importantForAccessibility="no"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            style="@style/Text.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:gravity="center"
+            android:text="@string/about_credit"/>
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

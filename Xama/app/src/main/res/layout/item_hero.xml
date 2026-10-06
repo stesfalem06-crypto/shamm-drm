@@ -1,43 +1,77 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/heroCard"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:layout_marginBottom="16dp">
+    android:layout_height="@dimen/hero_height"
+    android:layout_marginBottom="22dp"
+    android:foreground="?attr/selectableItemBackground"
+    app:cardBackgroundColor="@color/bg_elevated"
+    app:cardCornerRadius="26dp"
+    app:cardElevation="0dp">
 
-    <androidx.cardview.widget.CardView
-        android:layout_width="match_parent"
-        android:layout_height="220dp"
-        app:cardBackgroundColor="#1C1C1F"
-        app:cardCornerRadius="24dp"
-        app:cardElevation="0dp">
-        <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent">
-            <ImageView android:id="@+id/heroImage" android:layout_width="match_parent" android:layout_height="match_parent"
-                android:scaleType="centerCrop" android:background="@drawable/thumb_placeholder" android:contentDescription="Featured"/>
-            <View android:layout_width="match_parent" android:layout_height="match_parent" android:background="#66000000"/>
-            <View android:layout_width="56dp" android:layout_height="56dp" android:layout_gravity="center"
-                android:background="@drawable/avatar_circle" android:alpha="0.92"/>
-            <TextView android:layout_width="56dp" android:layout_height="56dp" android:layout_gravity="center"
-                android:gravity="center" android:text="▶" android:textColor="#FFFFFF" android:textSize="20sp"/>
-        </FrameLayout>
-    </androidx.cardview.widget.CardView>
+    <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent">
+        <ImageView
+            android:id="@+id/heroImage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:background="@drawable/thumb_placeholder"
+            android:contentDescription="Featured"/>
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/hero_scrim"/>
 
-    <TextView android:id="@+id/heroTitle" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:layout_marginTop="12dp" android:gravity="center" android:textColor="#FFFFFF" android:textSize="22sp"
-        android:textStyle="bold" android:maxLines="2" android:ellipsize="end"/>
-    <TextView android:id="@+id/heroMeta" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:layout_marginTop="4dp" android:gravity="center" android:textColor="#8E8E93" android:textSize="13sp" android:maxLines="1"/>
-
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center"
-        android:orientation="horizontal" android:layout_marginTop="14dp">
-        <TextView android:id="@+id/heroPlay" android:layout_width="wrap_content" android:layout_height="42dp"
-            android:gravity="center" android:paddingStart="22dp" android:paddingEnd="22dp"
-            android:text="▶  Watch now" android:textColor="#FFFFFF" android:textSize="14sp" android:textStyle="bold"
-            android:background="@drawable/hero_play_btn"/>
-        <TextView android:id="@+id/heroFolder" android:layout_width="wrap_content" android:layout_height="42dp"
-            android:layout_marginStart="10dp" android:gravity="center" android:paddingStart="18dp" android:paddingEnd="18dp"
-            android:text="Details" android:textColor="#FFFFFF" android:textSize="14sp" android:background="@drawable/hero_outline_btn"/>
-    </LinearLayout>
-</LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:orientation="vertical"
+            android:padding="18dp">
+            <TextView
+                android:id="@+id/heroKicker"
+                style="@style/Text.Overline"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Featured"/>
+            <TextView
+                android:id="@+id/heroTitle"
+                style="@style/Text.Display"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textSize="22sp"
+                android:maxLines="2"
+                android:ellipsize="end"/>
+            <TextView
+                android:id="@+id/heroMeta"
+                style="@style/Text.Caption"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/text_secondary"
+                android:maxLines="1"
+                android:ellipsize="end"/>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="12dp">
+                <TextView
+                    android:id="@+id/heroPlay"
+                    style="@style/PillButton.Primary"
+                    android:layout_height="40dp"
+                    android:drawableStart="@drawable/ic_play"
+                    android:paddingStart="16dp"
+                    android:text="Watch now"/>
+                <TextView
+                    android:id="@+id/heroFolder"
+                    style="@style/PillButton.Secondary"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="10dp"
+                    android:text="Open folder"/>
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+</androidx.cardview.widget.CardView>

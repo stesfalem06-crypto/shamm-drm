@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.shammapps.xama.R
 import com.shammapps.xama.crypto.ShammKeyResolver
+import com.shammapps.xama.data.LibraryCache
 import com.shammapps.xama.data.LocalVideo
 import com.shammapps.xama.data.VideoRepository
 import com.shammapps.xama.data.WatchHistory
@@ -36,10 +37,14 @@ class ReelsActivity : AppCompatActivity() {
         val ids = intent.getStringArrayListExtra("video_ids") ?: arrayListOf()
         val startIndex = intent.getIntExtra(MainActivity.EXTRA_START_INDEX, 0)
 
-        val repository = VideoRepository(this)
-        // Prefer id lookup from full library; fallback empty
-        val all = try { repository.loadAll() } catch (_: Exception) { emptyList() }
-        videos = ids.mapNotNull { id -> all.find { it.id == id } }
+        // Use the library snapshot from the main screen; rescan only if it's gone
+        // (e.g. process was recreated).
+        videos = LibraryCache.byIds(ids)
+        if (videos.isEmpty()) {
+            val all = try { VideoRepository(this).loadAll() } catch (_: Exception) { emptyList() }
+            val byId = all.associateBy { it.id }
+            videos = ids.mapNotNull { byId[it] }
+        }
 
         if (videos.isEmpty()) {
             finish()

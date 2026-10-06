@@ -2,6 +2,7 @@ package com.shammapps.xama.util
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Handler
@@ -11,12 +12,13 @@ import android.widget.ImageView
 import com.shammapps.xama.R
 import com.shammapps.xama.data.LocalVideo
 import java.util.concurrent.Executors
-import java.util.concurrent.Future
 
 /**
- * Bounded thumbnail extractor. One shared pool + memory cache so the library
- * grid never opens dozens of MediaMetadataRetriever instances at once
+ * Bounded thumbnail / album-art extractor. One shared pool + memory cache so
+ * the library never opens dozens of MediaMetadataRetriever instances at once
  * (main cause of freezes / OOM kills).
+ *
+ * Protected videos are never decoded for thumbnails (their bytes are encrypted).
  */
 object ThumbLoader {
     private val main = Handler(Looper.getMainLooper())
@@ -27,11 +29,14 @@ object ThumbLoader {
     ) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
     }
+    /** Remembers audio files with no embedded art so we don't retry them. */
+    private val noArt = HashSet<String>()
 
     fun load(context: Context, video: LocalVideo, into: ImageView, tagKey: Any) {
         if (video.isEncrypted) {
+            into.tag = tagKey
             into.setImageDrawable(null)
-            into.setBackgroundResource(R.drawable.thumb_placeholder)
+            into.setBackgroundResource(R.drawable.thumb_protected)
             return
         }
         val key = video.contentUri ?: video.filePath
@@ -39,7 +44,8 @@ object ThumbLoader {
 
         into.tag = tagKey
         into.setImageDrawable(null)
-        into.setBackgroundResource(R.drawable.thumb_placeholder)
+        // Audio rows draw their own placeholder underneath the image view.
+        if (video.isAudio) into.background = null else into.setBackgroundResource(R.drawable.thumb_placeholder)
 
         cache.get(key)?.let { bmp ->
             if (into.tag == tagKey) {
@@ -48,12 +54,15 @@ object ThumbLoader {
             }
             return
         }
+        if (video.isAudio && synchronized(noArt) { key in noArt }) return
 
         val app = context.applicationContext
         pool.execute {
-            val bmp = extract(app, video, key)
+            val bmp = extract(app, video, 320)
             if (bmp != null) {
                 synchronized(cache) { cache.put(key, bmp) }
+            } else if (video.isAudio) {
+                synchronized(noArt) { noArt.add(key) }
             }
             main.post {
                 if (into.tag == tagKey && bmp != null) {
@@ -64,7 +73,17 @@ object ThumbLoader {
         }
     }
 
-    private fun extract(context: Context, video: LocalVideo, key: String): Bitmap? {
+    /** Larger artwork for the audio player screen (not cached). */
+    fun loadLarge(context: Context, video: LocalVideo, callback: (Bitmap?) -> Unit) {
+        if (video.isEncrypted) { callback(null); return }
+        val app = context.applicationContext
+        pool.execute {
+            val bmp = extract(app, video, 900)
+            main.post { callback(bmp) }
+        }
+    }
+
+    private fun extract(context: Context, video: LocalVideo, maxW: Int): Bitmap? {
         val r = MediaMetadataRetriever()
         return try {
             when {
@@ -73,21 +92,28 @@ object ThumbLoader {
                 video.filePath.isNotBlank() -> r.setDataSource(video.filePath)
                 else -> return null
             }
-            // Prefer embedded thumbnail when available (fast)
+            // Prefer embedded picture (album art / poster) when available (fast)
             val embedded = try {
-                r.embeddedPicture?.let {
-                    android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)
-                }
+                r.embeddedPicture?.let { decodeSampled(it, maxW) }
             } catch (_: Exception) {
                 null
             }
-            val raw = embedded ?: r.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            scale(raw, 320)
+            val raw = embedded ?: if (video.isAudio) null
+            else r.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            scale(raw, maxW)
         } catch (_: Throwable) {
             null
         } finally {
             try { r.release() } catch (_: Exception) {}
         }
+    }
+
+    private fun decodeSampled(bytes: ByteArray, maxW: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= maxW) sample *= 2
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
     private fun scale(src: Bitmap?, maxW: Int): Bitmap? {

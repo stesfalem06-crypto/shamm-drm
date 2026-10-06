@@ -4,12 +4,15 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.shammapps.xama.R
 import com.shammapps.xama.data.LocalVideo
+import com.shammapps.xama.data.PlaybackPositions
 import com.shammapps.xama.util.ThumbLoader
 
+/** Video list row: 16:9 thumbnail, title, meta line, badge and resume progress. */
 class PosterAdapter(
     private val videos: List<LocalVideo>,
     private val onClick: (LocalVideo) -> Unit,
@@ -17,9 +20,12 @@ class PosterAdapter(
 
     class Holder(v: View) : RecyclerView.ViewHolder(v) {
         val image: ImageView = v.findViewById(R.id.posterImage)
+        val glyph: ImageView = v.findViewById(R.id.posterGlyph)
         val title: TextView = v.findViewById(R.id.posterTitle)
+        val meta: TextView = v.findViewById(R.id.posterMeta)
         val duration: TextView = v.findViewById(R.id.posterDuration)
         val badge: TextView = v.findViewById(R.id.posterBadge)
+        val progress: ProgressBar = v.findViewById(R.id.posterProgress)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
@@ -29,9 +35,14 @@ class PosterAdapter(
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val video = videos[position]
+        val ctx = holder.itemView.context
         holder.title.text = video.title
+        holder.meta.text = buildString {
+            append(video.folderName.ifBlank { "Video" })
+            if (video.isEncrypted) append(" · Licensed to this device")
+        }
         if (video.durationMs > 0) {
-            holder.duration.text = formatDuration(video.durationMs)
+            holder.duration.text = Ui.formatDuration(video.durationMs)
             holder.duration.visibility = View.VISIBLE
         } else {
             holder.duration.visibility = View.GONE
@@ -42,21 +53,23 @@ class PosterAdapter(
                 holder.badge.visibility = View.VISIBLE
             }
             video.isVertical -> {
-                holder.badge.text = "REELS"
+                holder.badge.text = "REEL"
                 holder.badge.visibility = View.VISIBLE
             }
             else -> holder.badge.visibility = View.GONE
         }
-        ThumbLoader.load(holder.itemView.context, video, holder.image, video.id)
-        holder.itemView.setOnClickListener { onClick(video) }
-    }
+        holder.glyph.visibility = if (video.isEncrypted) View.VISIBLE else View.GONE
+        holder.glyph.setImageResource(if (video.isEncrypted) R.drawable.ic_shield else R.drawable.ic_movie)
 
-    private fun formatDuration(ms: Long): String {
-        val s = ms / 1000
-        val h = s / 3600
-        val m = (s % 3600) / 60
-        val sec = s % 60
-        return if (h > 0) String.format("%d:%02d:%02d", h, m, sec) else String.format("%d:%02d", m, sec)
+        val saved = PlaybackPositions.get(ctx, video.id)
+        if (saved != null && saved.fraction > 0.01f) {
+            holder.progress.visibility = View.VISIBLE
+            holder.progress.progress = (saved.fraction * 1000).toInt()
+        } else {
+            holder.progress.visibility = View.GONE
+        }
+        ThumbLoader.load(ctx, video, holder.image, video.id)
+        holder.itemView.setOnClickListener { onClick(video) }
     }
 
     override fun getItemCount() = videos.size

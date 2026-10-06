@@ -1,378 +1,397 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/mainRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@color/bg_dark"
-    android:fitsSystemWindows="true">
+    android:background="@color/bg_dark">
 
-    <!-- Header -->
     <LinearLayout
-        android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp"
-        android:paddingTop="12dp"
-        android:paddingBottom="4dp"
-        android:background="@android:color/transparent">
-        <TextView
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:gravity="center"
-            android:text="X"
-            android:textStyle="bold"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:background="@drawable/avatar_circle"/>
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- Header -->
         <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:layout_marginStart="12dp">
-            <TextView
-                android:id="@+id/headerTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Hello"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="@color/text_primary"
-                android:textSize="20sp"
-                android:textStyle="bold"/>
-            <TextView
-                android:id="@+id/videoCountText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="See your favorite movies"
-                android:textColor="@color/text_muted"
-                android:textSize="12sp"/>
-        </LinearLayout>
-    </LinearLayout>
-
-    <!-- Search -->
-    <LinearLayout
-        android:id="@+id/searchBar"
-        android:layout_width="match_parent"
-        android:layout_height="44dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginBottom="4dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@drawable/search_bg"
-        android:paddingStart="14dp"
-        android:paddingEnd="14dp">
-        <ImageView
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:src="@drawable/ic_search"
-            android:contentDescription="Search"/>
-        <EditText
-            android:id="@+id/searchInput"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:layout_marginStart="10dp"
-            android:background="@null"
-            android:hint="Search movie …"
-            android:textColorHint="@color/text_muted"
-            android:textColor="@color/text_primary"
-            android:textSize="15sp"
-            android:inputType="text"
-            android:imeOptions="actionSearch"
-            android:maxLines="1"/>
-    </LinearLayout>
-
-    <!-- Category pills (Home) -->
-    <HorizontalScrollView
-        android:id="@+id/categoryScroll"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:scrollbars="none"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="4dp">
-        <LinearLayout
-            android:id="@+id/categoryRow"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <TextView android:id="@+id/catAll" style="@style/CategoryChip" android:text="All"/>
-            <TextView android:id="@+id/catRecent" style="@style/CategoryChip" android:text="Recent"/>
-            <TextView android:id="@+id/catReels" style="@style/CategoryChip" android:text="Reels"/>
-            <TextView android:id="@+id/catLong" style="@style/CategoryChip" android:text="Movies"/>
-            <TextView android:id="@+id/catProtected" style="@style/CategoryChip" android:text="Protected"/>
-        </LinearLayout>
-    </HorizontalScrollView>
-
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
-
-        <!-- Home / folders / protected content -->
-        <androidx.core.widget.NestedScrollView
-            android:id="@+id/homeScroll"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:fillViewport="true"
-            android:visibility="gone">
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="12dp">
-                <include layout="@layout/item_hero"/>
-
-                <LinearLayout
-                    android:id="@+id/continueSection"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:visibility="gone"
-                    android:layout_marginBottom="8dp">
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Continue watching"
-                        android:textColor="@color/text_primary"
-                        android:textSize="17sp"
-                        android:textStyle="bold"
-                        android:layout_marginStart="4dp"
-                        android:layout_marginBottom="8dp"/>
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/continueRow"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:nestedScrollingEnabled="false"/>
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/sectionTitle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="On this device"
-                    android:textColor="@color/text_primary"
-                    android:textSize="17sp"
-                    android:textStyle="bold"
-                    android:layout_marginTop="4dp"
-                    android:layout_marginBottom="8dp"
-                    android:layout_marginStart="4dp"/>
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/homeGrid"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:nestedScrollingEnabled="false"/>
-            </LinearLayout>
-        </androidx.core.widget.NestedScrollView>
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/contentList"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:padding="12dp"/>
-
-        <LinearLayout
-            android:id="@+id/folderBackBar"
+            android:id="@+id/topBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:padding="12dp"
-            android:background="@color/bg_dark"
-            android:visibility="gone">
-            <TextView
-                android:id="@+id/btnBackFolder"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="← Folders"
-                android:textColor="@color/accent"
-                android:textSize="15sp"
-                android:textStyle="bold"
-                android:padding="8dp"/>
-            <TextView
-                android:id="@+id/folderDetailTitle"
+            android:paddingStart="@dimen/screen_pad"
+            android:paddingEnd="12dp"
+            android:paddingTop="14dp"
+            android:paddingBottom="4dp">
+
+            <FrameLayout
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/avatar_circle">
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center"
+                    android:layout_marginStart="2dp"
+                    android:src="@drawable/ic_play"
+                    android:importantForAccessibility="no"/>
+            </FrameLayout>
+
+            <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:textColor="@color/text_primary"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:maxLines="1"
-                android:ellipsize="end"/>
+                android:orientation="vertical"
+                android:layout_marginStart="12dp">
+                <TextView
+                    android:id="@+id/headerTitle"
+                    style="@style/Text.Display"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="22sp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:text="Xama"/>
+                <TextView
+                    android:id="@+id/videoCountText"
+                    style="@style/Text.Caption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:maxLines="1"
+                    android:text=""/>
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/btnRefresh"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:padding="11dp"
+                android:scaleType="fitCenter"
+                android:background="@drawable/player_btn_ripple"
+                android:src="@drawable/ic_refresh"
+                app:tint="@color/text_secondary"
+                android:contentDescription="Rescan library"/>
+
+            <ImageButton
+                android:id="@+id/btnAbout"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:padding="11dp"
+                android:scaleType="fitCenter"
+                android:background="@drawable/player_btn_ripple"
+                android:src="@drawable/ic_info"
+                app:tint="@color/text_secondary"
+                android:contentDescription="About Xama"/>
         </LinearLayout>
 
-        <!-- Profile panel -->
-        <ScrollView
-            android:id="@+id/profilePanel"
+        <!-- Search -->
+        <LinearLayout
+            android:id="@+id/searchBar"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="gone"
-            android:fillViewport="true">
+            android:layout_height="46dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="4dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/search_bg"
+            android:paddingStart="14dp"
+            android:paddingEnd="6dp">
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_search"
+                android:importantForAccessibility="no"/>
+            <EditText
+                android:id="@+id/searchInput"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:background="@null"
+                android:hint="Search videos and music"
+                android:textColorHint="@color/text_muted"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp"
+                android:inputType="text"
+                android:imeOptions="actionSearch"
+                android:importantForAutofill="no"
+                android:maxLines="1"/>
+            <ImageButton
+                android:id="@+id/searchClear"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:padding="9dp"
+                android:scaleType="fitCenter"
+                android:background="@drawable/player_btn_ripple"
+                android:src="@drawable/ic_close"
+                app:tint="@color/text_muted"
+                android:visibility="gone"
+                android:contentDescription="Clear search"/>
+        </LinearLayout>
+
+        <!-- Category pills (Home) -->
+        <HorizontalScrollView
+            android:id="@+id/categoryScroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:clipToPadding="false"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="4dp">
             <LinearLayout
-                android:layout_width="match_parent"
+                android:id="@+id/categoryRow"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="24dp"
-                android:gravity="center_horizontal">
+                android:orientation="horizontal">
+                <TextView android:id="@+id/catAll" style="@style/CategoryChip" android:text="All"/>
+                <TextView android:id="@+id/catRecent" style="@style/CategoryChip" android:text="Recent"/>
+                <TextView android:id="@+id/catReels" style="@style/CategoryChip" android:text="Reels"/>
+                <TextView android:id="@+id/catLong" style="@style/CategoryChip" android:text="Movies"/>
+                <TextView android:id="@+id/catProtected" style="@style/CategoryChip" android:text="Protected"/>
+            </LinearLayout>
+        </HorizontalScrollView>
 
-                <TextView
-                    android:layout_width="88dp"
-                    android:layout_height="88dp"
-                    android:gravity="center"
-                    android:text="X"
-                    android:textSize="36sp"
-                    android:textStyle="bold"
-                    android:textColor="#FFFFFF"
-                    android:background="@drawable/play_circle_bg"/>
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="Xama"
-                    android:textColor="@color/text_primary"
-                    android:textSize="24sp"
-                    android:textStyle="bold"/>
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Offline player · Protected streaming"
-                    android:textColor="@color/text_muted"
-                    android:textSize="13sp"/>
-
+            <androidx.core.widget.NestedScrollView
+                android:id="@+id/homeScroll"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingBottom="120dp"
+                android:visibility="gone">
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginTop="28dp">
+                    android:orientation="vertical"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:paddingTop="10dp">
 
-                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                        android:layout_weight="1" android:orientation="vertical" android:gravity="center"
-                        android:background="@drawable/glass_panel" android:padding="16dp"
-                        android:layout_marginEnd="6dp">
-                        <TextView android:id="@+id/statTotal" android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" android:text="0"
-                            android:textColor="@color/accent" android:textSize="22sp" android:textStyle="bold"/>
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                            android:text="Videos" android:textColor="@color/text_muted" android:textSize="12sp"/>
+                    <include layout="@layout/item_hero"/>
+
+                    <LinearLayout
+                        android:id="@+id/continueSection"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone"
+                        android:layout_marginBottom="10dp">
+                        <TextView
+                            style="@style/Text.Section"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Continue watching"
+                            android:layout_marginStart="4dp"
+                            android:layout_marginBottom="10dp"/>
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/continueRow"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:clipToPadding="false"
+                            android:nestedScrollingEnabled="false"/>
                     </LinearLayout>
 
-                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                        android:layout_weight="1" android:orientation="vertical" android:gravity="center"
-                        android:background="@drawable/glass_panel" android:padding="16dp"
-                        android:layout_marginStart="6dp" android:layout_marginEnd="6dp">
-                        <TextView android:id="@+id/statProtected" android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" android:text="0"
-                            android:textColor="@color/accent" android:textSize="22sp" android:textStyle="bold"/>
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                            android:text="Protected" android:textColor="@color/text_muted" android:textSize="12sp"/>
-                    </LinearLayout>
-
-                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                        android:layout_weight="1" android:orientation="vertical" android:gravity="center"
-                        android:background="@drawable/glass_panel" android:padding="16dp"
-                        android:layout_marginStart="6dp">
-                        <TextView android:id="@+id/statFolders" android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" android:text="0"
-                            android:textColor="@color/accent" android:textSize="22sp" android:textStyle="bold"/>
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                            android:text="Folders" android:textColor="@color/text_muted" android:textSize="12sp"/>
-                    </LinearLayout>
+                    <TextView
+                        android:id="@+id/sectionTitle"
+                        style="@style/Text.Section"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Suggested for you"
+                        android:layout_marginTop="4dp"
+                        android:layout_marginBottom="6dp"
+                        android:layout_marginStart="4dp"/>
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/homeGrid"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:nestedScrollingEnabled="false"/>
                 </LinearLayout>
+            </androidx.core.widget.NestedScrollView>
 
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/contentList"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="120dp"
+                android:visibility="gone"/>
+
+            <LinearLayout
+                android:id="@+id/folderBackBar"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="16dp"
+                android:background="@color/bg_dark"
+                android:visibility="gone">
+                <ImageButton
+                    android:id="@+id/btnBackFolder"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:padding="11dp"
+                    android:scaleType="fitCenter"
+                    android:background="@drawable/player_btn_ripple"
+                    android:src="@drawable/ic_back"
+                    app:tint="@color/accent"
+                    android:contentDescription="Back to folders"/>
                 <TextView
-                    android:id="@+id/profileHint"
-                    android:layout_width="match_parent"
+                    android:id="@+id/folderDetailTitle"
+                    style="@style/Text.Caption"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="24dp"
-                    android:padding="16dp"
-                    android:background="@drawable/glass_panel"
-                    android:textColor="@color/text_muted"
-                    android:textSize="13sp"
-                    android:lineSpacingExtra="4dp"
-                    android:text="Protected videos are licensed to this device only. Screenshots are blocked while they play."/>
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"/>
             </LinearLayout>
-        </ScrollView>
+
+            <include
+                android:id="@+id/profilePanel"
+                layout="@layout/panel_profile"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone"/>
+
+            <!-- Empty state -->
+            <LinearLayout
+                android:id="@+id/emptyState"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:paddingStart="40dp"
+                android:paddingEnd="40dp"
+                android:paddingBottom="90dp"
+                android:visibility="gone">
+                <FrameLayout
+                    android:layout_width="96dp"
+                    android:layout_height="96dp"
+                    android:background="@drawable/icon_circle_soft">
+                    <ImageView
+                        android:id="@+id/emptyIcon"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_movie"
+                        app:tint="@color/accent"
+                        android:importantForAccessibility="no"/>
+                </FrameLayout>
+                <TextView
+                    android:id="@+id/emptyTitle"
+                    style="@style/Text.Title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:gravity="center"
+                    android:text="Nothing here yet"/>
+                <TextView
+                    android:id="@+id/emptyMessage"
+                    style="@style/Text.Caption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:textSize="14sp"
+                    android:lineSpacingExtra="2dp"
+                    android:text="Videos and music on this phone will appear here."/>
+                <TextView
+                    android:id="@+id/emptyAction"
+                    style="@style/PillButton.Primary"
+                    android:layout_marginTop="22dp"
+                    android:text="Rescan"
+                    android:visibility="gone"/>
+            </LinearLayout>
+
+            <!-- Loading state -->
+            <LinearLayout
+                android:id="@+id/loadingState"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:paddingBottom="90dp"
+                android:visibility="gone">
+                <com.google.android.material.progressindicator.CircularProgressIndicator
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:indeterminate="true"
+                    app:indicatorColor="@color/accent"
+                    app:trackColor="@color/bg_elevated"
+                    app:indicatorSize="44dp"
+                    app:trackThickness="4dp"
+                    app:trackCornerRadius="2dp"/>
+                <TextView
+                    style="@style/Text.Caption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:textSize="14sp"
+                    android:text="Scanning your library…"/>
+            </LinearLayout>
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- Bottom chrome: mini player + floating navigation -->
+    <LinearLayout
+        android:id="@+id/bottomChrome"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="12dp">
+
+        <include
+            android:id="@+id/miniPlayer"
+            layout="@layout/layout_mini_player"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone"/>
 
         <LinearLayout
-            android:id="@+id/emptyState"
+            android:id="@+id/bottomNav"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:padding="32dp"
-            android:visibility="gone">
-            <TextView
-                android:layout_width="72dp" android:layout_height="72dp"
-                android:gravity="center" android:text="▶" android:textSize="32sp"
-                android:textColor="@color/accent" android:background="@drawable/play_circle_bg"/>
-            <TextView
-                android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:layout_marginTop="20dp" android:text="Nothing here yet"
-                android:textColor="@color/text_primary" android:textSize="20sp" android:textStyle="bold"/>
-            <TextView
-                android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="Tap Allow when asked for video access — then your library appears.\nProtected titles show up after a shop sends them over USB."
-                android:textColor="@color/text_muted" android:textSize="14sp"
-                android:gravity="center"/>
-        </LinearLayout>
-    </FrameLayout>
+            android:layout_height="64dp"
+            android:orientation="horizontal"
+            android:background="@drawable/nav_float"
+            android:elevation="8dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp">
 
-    <!-- Bottom nav: Home | Folders | Protected | Profile -->
-    <LinearLayout
-        android:id="@+id/bottomNavBar"
-        android:layout_width="match_parent"
-        android:layout_height="64dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="10dp"
-        android:layout_marginTop="6dp"
-        android:orientation="horizontal"
-        android:background="@drawable/nav_float"
-        android:elevation="0dp"
-        android:padding="6dp">
-
-        <LinearLayout android:id="@+id/navHome" android:layout_width="0dp" android:layout_height="match_parent"
-            android:layout_weight="1" android:orientation="vertical" android:gravity="center">
-            <TextView android:id="@+id/navHomeIcon" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="⌂" android:textSize="20sp" android:textColor="@color/accent"/>
-            <TextView android:id="@+id/navHomeLabel" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="Home" android:textSize="11sp" android:textColor="@color/accent" android:textStyle="bold"/>
-        </LinearLayout>
-
-        <LinearLayout android:id="@+id/navFolders" android:layout_width="0dp" android:layout_height="match_parent"
-            android:layout_weight="1" android:orientation="vertical" android:gravity="center">
-            <TextView android:id="@+id/navFoldersIcon" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="▣" android:textSize="20sp" android:textColor="@color/text_muted"/>
-            <TextView android:id="@+id/navFoldersLabel" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="Folders" android:textSize="11sp" android:textColor="@color/text_muted"/>
-        </LinearLayout>
-
-        <LinearLayout android:id="@+id/navProtected" android:layout_width="0dp" android:layout_height="match_parent"
-            android:layout_weight="1" android:orientation="vertical" android:gravity="center">
-            <TextView android:id="@+id/navProtectedIcon" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="★" android:textSize="20sp" android:textColor="@color/text_muted"/>
-            <TextView android:id="@+id/navProtectedLabel" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="Protected" android:textSize="11sp" android:textColor="@color/text_muted"/>
-        </LinearLayout>
-
-        <LinearLayout android:id="@+id/navProfile" android:layout_width="0dp" android:layout_height="match_parent"
-            android:layout_weight="1" android:orientation="vertical" android:gravity="center">
-            <TextView android:id="@+id/navProfileIcon" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="☺" android:textSize="20sp" android:textColor="@color/text_muted"/>
-            <TextView android:id="@+id/navProfileLabel" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="Profile" android:textSize="11sp" android:textColor="@color/text_muted"/>
+            <LinearLayout android:id="@+id/navHome" style="@style/NavItem">
+                <ImageView android:id="@+id/navHomeIcon" style="@style/NavIcon" android:src="@drawable/ic_home" android:importantForAccessibility="no"/>
+                <TextView android:id="@+id/navHomeLabel" style="@style/NavLabel" android:text="Home"/>
+            </LinearLayout>
+            <LinearLayout android:id="@+id/navFolders" style="@style/NavItem">
+                <ImageView android:id="@+id/navFoldersIcon" style="@style/NavIcon" android:src="@drawable/ic_folder" android:importantForAccessibility="no"/>
+                <TextView android:id="@+id/navFoldersLabel" style="@style/NavLabel" android:text="Folders"/>
+            </LinearLayout>
+            <LinearLayout android:id="@+id/navMusic" style="@style/NavItem">
+                <ImageView android:id="@+id/navMusicIcon" style="@style/NavIcon" android:src="@drawable/ic_music" android:importantForAccessibility="no"/>
+                <TextView android:id="@+id/navMusicLabel" style="@style/NavLabel" android:text="Music"/>
+            </LinearLayout>
+            <LinearLayout android:id="@+id/navProtected" style="@style/NavItem">
+                <ImageView android:id="@+id/navProtectedIcon" style="@style/NavIcon" android:src="@drawable/ic_shield" android:importantForAccessibility="no"/>
+                <TextView android:id="@+id/navProtectedLabel" style="@style/NavLabel" android:text="Protected"/>
+            </LinearLayout>
+            <LinearLayout android:id="@+id/navProfile" style="@style/NavItem">
+                <ImageView android:id="@+id/navProfileIcon" style="@style/NavIcon" android:src="@drawable/ic_person" android:importantForAccessibility="no"/>
+                <TextView android:id="@+id/navProfileLabel" style="@style/NavLabel" android:text="Profile"/>
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
-</LinearLayout>
+</FrameLayout>
