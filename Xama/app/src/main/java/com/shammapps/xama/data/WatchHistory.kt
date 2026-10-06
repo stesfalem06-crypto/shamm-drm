@@ -25,4 +25,8 @@ object WatchHistory {
         val byId = all.associateBy { it.id }
         return recentIds(context).mapNotNull { byId[it] }
     }
+
+    fun clear(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY).apply()
+    }
 }
