@@ -1,45 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="140dp"
+    android:layout_width="196dp"
     android:layout_height="wrap_content"
-    android:layout_marginEnd="10dp"
-    app:cardBackgroundColor="#1A1A1F"
-    app:cardCornerRadius="16dp"
-    app:cardElevation="0dp">
+    android:layout_marginEnd="12dp"
+    android:orientation="vertical">
 
-    <LinearLayout
+    <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical">
-
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="90dp">
-            <ImageView
-                android:id="@+id/continueImage"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="centerCrop"
-                android:background="@drawable/thumb_placeholder"/>
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="4dp"
-                android:layout_gravity="bottom"
-                android:background="@color/accent"
-                android:alpha="0.85"/>
+        android:layout_height="110dp"
+        android:foreground="?attr/selectableItemBackground"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="0dp"
+        app:cardBackgroundColor="@color/bg_elevated">
+        <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent">
+            <ImageView android:id="@+id/continueImage" android:layout_width="match_parent" android:layout_height="match_parent"
+                android:scaleType="centerCrop" android:background="@drawable/thumb_placeholder" android:contentDescription="Thumbnail"/>
+            <View android:layout_width="match_parent" android:layout_height="match_parent" android:background="#33000000"/>
+            <FrameLayout android:layout_width="38dp" android:layout_height="38dp" android:layout_gravity="center"
+                android:background="@drawable/player_glass_circle">
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center"
+                    android:layout_marginStart="2dp" android:src="@drawable/ic_play" android:importantForAccessibility="no"/>
+            </FrameLayout>
+            <ProgressBar android:id="@+id/continueProgress" style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent" android:layout_height="3dp" android:layout_gravity="bottom"
+                android:max="1000" android:progressDrawable="@drawable/progress_track"/>
         </FrameLayout>
+    </androidx.cardview.widget.CardView>
 
-        <TextView
-            android:id="@+id/continueTitle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="8dp"
-            android:textColor="@color/text_primary"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:maxLines="2"
-            android:ellipsize="end"
-            android:minHeight="40dp"/>
-    </LinearLayout>
-</androidx.cardview.widget.CardView>
+    <TextView android:id="@+id/continueTitle" style="@style/Text.Body" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textSize="13.5sp"
+        android:fontFamily="sans-serif-medium" android:maxLines="1" android:ellipsize="end"/>
+    <TextView android:id="@+id/continueMeta" style="@style/Text.Caption" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:maxLines="1" android:ellipsize="end"/>
+</LinearLayout>

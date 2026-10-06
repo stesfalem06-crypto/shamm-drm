@@ -1,10 +1,22 @@
 <resources>
-    <color name="bg_dark">#0B0B0D</color>
-    <color name="bg_panel">#161618</color>
-    <color name="bg_elevated">#1C1C1F</color>
-    <color name="accent">#FF6A00</color>
-    <color name="accent_soft">#FF3B30</color>
+    <!-- Surfaces (dark, slightly warm) -->
+    <color name="bg_dark">#0A0A0C</color>
+    <color name="bg_panel">#141417</color>
+    <color name="bg_elevated">#1C1C21</color>
+    <color name="surface_high">#25252C</color>
+    <color name="stroke">#1AFFFFFF</color>
+    <color name="stroke_strong">#33FFFFFF</color>
+
+    <!-- Accent: refined warm orange with a deeper partner for gradients -->
+    <color name="accent">#FF7A1A</color>
+    <color name="accent_light">#FFA04D</color>
+    <color name="accent_deep">#F04A1F</color>
+    <color name="accent_soft">#33FF7A1A</color>
+    <color name="accent_glow">#1FFF7A1A</color>
+
+    <!-- Text -->
     <color name="text_primary">#F5F5F7</color>
-    <color name="text_muted">#8E8E93</color>
-    <color name="chip_bg">#2C2C2E</color>
+    <color name="text_secondary">#B4B4BD</color>
+    <color name="text_muted">#7D7D88</color>
+
 </resources>

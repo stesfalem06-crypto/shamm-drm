@@ -1,0 +1,5 @@
+<resources>
+    <dimen name="hero_height">180dp</dimen>
+    <dimen name="screen_pad">28dp</dimen>
+    <dimen name="audio_art_size">220dp</dimen>
+</resources>

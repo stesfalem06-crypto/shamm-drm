@@ -23,7 +23,7 @@
         android:paddingEnd="20dp"
         android:paddingTop="10dp"
         android:paddingBottom="10dp"
-        android:background="@drawable/play_circle_bg"
+        android:background="@drawable/indicator_bg"
         android:textColor="#FFFFFF"
         android:textSize="20sp"
         android:textStyle="bold"
@@ -45,8 +45,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold"
+            android:textSize="17sp"
+            android:fontFamily="sans-serif-medium"
+            android:shadowColor="#99000000"
+            android:shadowRadius="6"
             android:maxLines="2"
             android:ellipsize="end"/>
 
@@ -68,6 +70,6 @@
         android:layout_gravity="bottom"
         android:max="1000"
         android:progress="0"
-        android:progressTint="#FF6B2C"
+        android:progressTint="@color/accent"
         android:progressBackgroundTint="#33FFFFFF"/>
 </FrameLayout>
