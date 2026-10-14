@@ -146,8 +146,17 @@
 
             <Border Grid.Column="2" Background="{StaticResource BgPanel}" CornerRadius="14" Padding="16">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Phones (tick to send)" FontSize="13"
-                               Foreground="{StaticResource TextMuted}" Margin="0,0,0,8"/>
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
+                        <TextBlock Text="Phones (tick to send)" FontSize="13" VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextMuted}"/>
+                        <TextBlock HorizontalAlignment="Right" FontSize="12" Cursor="Hand" VerticalAlignment="Center"
+                                   Foreground="{StaticResource Accent}" Text="⟳ Refresh" ToolTip="Restart adb and rescan phones"
+                                   MouseLeftButtonUp="RefreshPhones_Click"/>
+                    </Grid>
+                    <TextBlock x:Name="AdbStatusText" DockPanel.Dock="Top" FontSize="10" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextMuted}" Margin="0,0,0,4" Text="adb: starting…"/>
+                    <TextBlock x:Name="UsbHintText" DockPanel.Dock="Top" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+                               Foreground="{StaticResource Accent}" Margin="0,0,0,8" Visibility="Collapsed"/>
                     <StackPanel DockPanel.Dock="Bottom">
                         <Grid Margin="0,0,0,6">
                             <TextBlock x:Name="QueueText" Text="Queue empty · Enter adds selection" FontSize="11"

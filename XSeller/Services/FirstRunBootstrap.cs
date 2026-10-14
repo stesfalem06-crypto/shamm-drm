@@ -41,42 +41,12 @@ public static class FirstRunBootstrap
                 "Supported: video, PDF, images, and .exe. Downloads / Videos / Desktop are\n" +
                 "also indexed by default (customize via Add / Remove media folder).\n");
 
-        // Start ADB server silently so the first phone plug works immediately
-        try
-        {
-            var adb = ResolveAdb();
-            if (adb != null)
-            {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = adb,
-                    Arguments = "start-server",
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                };
-                using var p = Process.Start(psi);
-                p?.WaitForExit(15_000);
-            }
-        }
-        catch { /* offline ok */ }
+        // The adb server is started by AdbService's watcher thread (without redirected
+        // pipes, which would hang on the forked daemon). Nothing to do here, so launch
+        // is never delayed by adb.
 
         File.WriteAllText(MarkerPath, DateTime.UtcNow.ToString("O"));
     }
 
-    public static string? ResolveAdb()
-    {
-        var candidates = new List<string>();
-        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-        var exeDir = Path.GetDirectoryName(Environment.ProcessPath) ?? baseDir;
-        candidates.Add(Path.Combine(baseDir, "platform-tools", "adb.exe"));
-        candidates.Add(Path.Combine(exeDir, "platform-tools", "adb.exe"));
-        candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XSeller", "platform-tools", "adb.exe"));
-        foreach (var c in candidates)
-        {
-            if (File.Exists(c)) return c;
-        }
-        return null;
-    }
+    public static string? ResolveAdb() => AdbService.ResolveAdb();
 }

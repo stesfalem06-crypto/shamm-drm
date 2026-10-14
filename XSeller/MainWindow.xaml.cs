@@ -58,12 +58,65 @@ public partial class MainWindow : Window
 
         DevicesList.ItemsSource = _deviceRows;
         _adb.DevicesChanged += devices => Dispatcher.BeginInvoke(() => OnDevices(devices));
+        _adb.StatusChanged += st => Dispatcher.BeginInvoke(() => AdbStatusText.Text = st);
+        AdbStatusText.Text = _adb.AdbPath == null ? "adb: not found" : $"adb: {_adb.AdbPath} | starting server…";
         _adb.StartWatching(1000);
+        StartUsbScan();
 
         StatusText.Text = "Loading index… type to search instantly.";
         Loaded += (_, _) => { SearchBox.Focus(); Keyboard.Focus(SearchBox); };
         SearchBox.PreviewKeyDown += SearchBox_PreviewKeyDown;
-        Closed += (_, _) => { _adb.Dispose(); _index.Dispose(); };
+        Closed += (_, _) => { _usbTimer?.Stop(); _adb.Dispose(); _index.Dispose(); };
+    }
+
+    // ---------------------------------------------------------------- USB / WMI hints
+
+    private System.Windows.Threading.DispatcherTimer? _usbTimer;
+    private bool _usbScanBusy;
+
+    private void StartUsbScan()
+    {
+        _usbTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _usbTimer.Tick += async (_, _) => await ScanUsbAsync();
+        _usbTimer.Start();
+        _ = ScanUsbAsync();
+    }
+
+    private async Task ScanUsbAsync()
+    {
+        if (_usbScanBusy) return;
+        // Only needed while adb sees no authorized phone.
+        if (_adb.LastDevices.Any(d => d.State == "device")) { UsbHintText.Visibility = Visibility.Collapsed; return; }
+        _usbScanBusy = true;
+        try
+        {
+            var findings = await Task.Run(UsbPhoneDetector.Scan);
+            var adbSeesSomething = _adb.LastDevices.Count > 0;
+            var driver = findings.FirstOrDefault(f => f.Kind == "driver");
+            var mtp = findings.FirstOrDefault(f => f.Kind == "mtp");
+            var adbIf = findings.FirstOrDefault(f => f.Kind == "adb");
+            string? hint = null;
+            if (driver != null)
+                hint = $"Phone detected ({driver.Name}) but its USB driver is missing — install the phone maker's USB driver " +
+                       "(Samsung USB Driver / Google USB Driver), then press Refresh.";
+            else if (!adbSeesSomething && adbIf != null)
+                hint = $"Phone detected ({adbIf.Name}) — unlock it and tap Allow, then press Refresh if it does not appear.";
+            else if (!adbSeesSomething && mtp != null)
+                hint = $"Phone detected ({mtp.Name}) - turn on USB debugging (install Xama for guided setup).";
+            UsbHintText.Text = hint ?? "";
+            UsbHintText.Visibility = hint == null ? Visibility.Collapsed : Visibility.Visible;
+            if (hint != null) DevicesEmpty.Visibility = Visibility.Collapsed;
+            else if (_deviceRows.Count == 0) DevicesEmpty.Visibility = Visibility.Visible;
+        }
+        catch (Exception ex) { AdbService.Log("usb hint error: " + ex.Message); }
+        finally { _usbScanBusy = false; }
+    }
+
+    private void RefreshPhones_Click(object sender, MouseButtonEventArgs e)
+    {
+        AdbStatusText.Text = "adb: restarting server…";
+        _adb.Refresh();
+        _ = ScanUsbAsync();
     }
 
     private void TryAddRoot(string? path, bool persist)

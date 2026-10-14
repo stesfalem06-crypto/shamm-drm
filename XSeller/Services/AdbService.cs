@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace XSeller.Services;
 
@@ -10,64 +11,243 @@ public record ConnectedDevice(string Serial, string Model, string State);
 /// ADB bridge. Continuously watches for phones; once the user taps "Allow"
 /// on the RSA prompt we auto-apply shop-friendly settings.
 ///
+/// Robustness notes (phones-not-listed fix):
+/// <list type="bullet">
+/// <item><c>adb start-server</c> forks a long-lived daemon that inherits the child's
+/// stdout/stderr handles. Reading those redirected pipes to EOF therefore blocks
+/// forever, which froze the watcher before its first poll. start-server is now run
+/// WITHOUT redirection, and every other call uses event-based reads plus a hard
+/// timeout that kills a hung adb.</item>
+/// <item>adb is resolved from bundled platform-tools, then PATH, then the Android SDK.</item>
+/// <item>Every poll result / error is published via <see cref="StatusChanged"/> and
+/// logged to %DOCUMENTS%\XSeller\adb.log.</item>
+/// </list>
 /// Note: Android does NOT allow a PC to turn on USB debugging the first time
-/// without Developer options — that is a platform security rule. After the
-/// user enables it once and accepts this computer, we keep the session
-/// optimized automatically.
+/// without Developer options — that is a platform security rule.
 /// </summary>
 public class AdbService : IDisposable
 {
-    private readonly string _adbPath;
+    private string? _adbPath;
     private CancellationTokenSource? _watchCts;
-    private List<ConnectedDevice> _last = new();
+    private volatile List<ConnectedDevice> _last = new();
+    private volatile bool _serverOk;
+    private readonly SemaphoreSlim _pollGate = new(1, 1);
+    private static readonly object LogLock = new();
 
     public event Action<List<ConnectedDevice>>? DevicesChanged;
+    /// <summary>Human-readable one-line adb status for the phone panel.</summary>
+    public event Action<string>? StatusChanged;
+
+    public string? AdbPath => _adbPath;
+    public bool AdbAvailable => _adbPath != null;
+    public string LastStatus { get; private set; } = "adb: starting…";
+
+    public static string LogPath => Path.Combine(FirstRunBootstrap.DocsRoot, "adb.log");
 
     public AdbService()
     {
-        _adbPath = FirstRunBootstrap.ResolveAdb() ?? "adb";
+        _adbPath = ResolveAdb();
     }
 
-    public bool AdbAvailable => File.Exists(_adbPath) || string.Equals(_adbPath, "adb", StringComparison.Ordinal);
+    // ------------------------------------------------------------ locate adb
 
-    public void StartServer()
+    public static IEnumerable<string> AdbCandidates()
     {
-        try { Run("kill-server"); } catch { }
-        try { Run("start-server"); } catch { /* adb missing */ }
+        var baseDir = AppContext.BaseDirectory;
+        var exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? "") ?? baseDir;
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        yield return Path.Combine(exeDir, "platform-tools", "adb.exe");
+        yield return Path.Combine(baseDir, "platform-tools", "adb.exe");
+        yield return Path.Combine(exeDir, "adb.exe");
+        yield return Path.Combine(local, "XSeller", "platform-tools", "adb.exe");
+        foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
+        {
+            if (string.IsNullOrWhiteSpace(dir)) continue;
+            string c;
+            try { c = Path.Combine(dir.Trim().Trim('"'), "adb.exe"); } catch { continue; }
+            yield return c;
+        }
+        foreach (var env in new[] { "ANDROID_HOME", "ANDROID_SDK_ROOT" })
+        {
+            var v = Environment.GetEnvironmentVariable(env);
+            if (!string.IsNullOrWhiteSpace(v)) yield return Path.Combine(v, "platform-tools", "adb.exe");
+        }
+        yield return Path.Combine(local, "Android", "Sdk", "platform-tools", "adb.exe");
+        var pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        if (!string.IsNullOrEmpty(pf86)) yield return Path.Combine(pf86, "Android", "android-sdk", "platform-tools", "adb.exe");
     }
 
-    public void StartWatching(int intervalMs = 1500)
+    public static string? ResolveAdb()
+    {
+        foreach (var c in AdbCandidates())
+        {
+            try { if (File.Exists(c)) return Path.GetFullPath(c); } catch { }
+        }
+        return null;
+    }
+
+    // ------------------------------------------------------------ logging / status
+
+    public static void Log(string msg)
+    {
+        try
+        {
+            lock (LogLock)
+            {
+                Directory.CreateDirectory(FirstRunBootstrap.DocsRoot);
+                var fi = new FileInfo(LogPath);
+                if (fi.Exists && fi.Length > 1_000_000)
+                {
+                    try { File.Move(LogPath, LogPath + ".old", overwrite: true); } catch { }
+                }
+                File.AppendAllText(LogPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {msg}{Environment.NewLine}");
+            }
+        }
+        catch { /* logging must never break the app */ }
+    }
+
+    private void SetStatus(string s)
+    {
+        if (s == LastStatus) return;
+        LastStatus = s;
+        Log("STATUS " + s);
+        try { StatusChanged?.Invoke(s); } catch { }
+    }
+
+    // ------------------------------------------------------------ server
+
+    /// <summary>
+    /// Start the adb daemon. Deliberately NOT redirected: the daemon inherits the
+    /// child's handles, so redirected pipes would never reach EOF.
+    /// </summary>
+    public bool StartServer(bool restart = false)
+    {
+        if (_adbPath == null) _adbPath = ResolveAdb();
+        if (_adbPath == null)
+        {
+            _serverOk = false;
+            Log("adb.exe not found. Looked in: " + string.Join("; ", AdbCandidates().Distinct()));
+            SetStatus("adb not found — reinstall X Seller (platform-tools folder missing next to XSeller.exe)");
+            return false;
+        }
+        try
+        {
+            if (restart) RunNoRedirect("kill-server", 10_000);
+            var code = RunNoRedirect("start-server", 30_000);
+            _serverOk = code == 0;
+            Log($"start-server exit={code} path={_adbPath}");
+            if (!_serverOk) SetStatus($"adb: {_adbPath} | server failed to start (exit {code}) — another adb/phone suite may hold port 5037");
+            return _serverOk;
+        }
+        catch (Exception ex)
+        {
+            _serverOk = false;
+            Log("start-server error: " + ex);
+            SetStatus($"adb: {_adbPath} | cannot run adb: {ex.Message}");
+            return false;
+        }
+    }
+
+    private int RunNoRedirect(string args, int timeoutMs)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = _adbPath!,
+            Arguments = args,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden,
+            WorkingDirectory = Path.GetDirectoryName(_adbPath!) ?? "",
+        };
+        using var p = Process.Start(psi) ?? throw new InvalidOperationException("Could not start adb.");
+        if (!p.WaitForExit(timeoutMs))
+        {
+            try { p.Kill(true); } catch { }
+            throw new TimeoutException($"adb {args} timed out");
+        }
+        return p.ExitCode;
+    }
+
+    // ------------------------------------------------------------ watcher
+
+    public void StartWatching(int intervalMs = 1000)
     {
         StopWatching();
         _watchCts = new CancellationTokenSource();
         var token = _watchCts.Token;
-        Task.Run(async () =>
+        var t = new Thread(() =>
         {
+            Log($"watcher start, adb={_adbPath ?? "(none)"}, base={AppContext.BaseDirectory}, exe={Environment.ProcessPath}");
             StartServer();
             while (!token.IsCancellationRequested)
             {
-                try
-                {
-                    var devices = ListDevices();
-                    var changed = !devices.Select(d => d.Serial + "|" + d.State + "|" + d.Model).ToHashSet()
-                        .SetEquals(_last.Select(d => d.Serial + "|" + d.State + "|" + d.Model));
-                    if (changed)
-                    {
-                        var newlyAuthorized = devices
-                            .Where(d => d.State == "device")
-                            .Where(d => _last.All(x => x.Serial != d.Serial) ||
-                                        _last.Any(x => x.Serial == d.Serial && x.State != "device"))
-                            .ToList();
-                        _last = devices;
-                        DevicesChanged?.Invoke(devices);
-                        foreach (var d in newlyAuthorized)
-                            TryOptimizeDevice(d.Serial);
-                    }
-                }
-                catch { /* transient adb */ }
-                try { await Task.Delay(intervalMs, token); } catch { break; }
+                PollOnce();
+                try { token.WaitHandle.WaitOne(intervalMs); } catch { break; }
             }
-        }, token);
+        })
+        { IsBackground = true, Name = "adb-watcher" };
+        t.Start();
+    }
+
+    /// <summary>Restart the adb server and poll immediately (Refresh button).</summary>
+    public void Refresh()
+    {
+        Task.Run(() =>
+        {
+            SetStatus("adb: restarting server…");
+            _adbPath = ResolveAdb();
+            StartServer(restart: true);
+            PollOnce(force: true);
+        });
+    }
+
+    private void PollOnce(bool force = false)
+    {
+        if (!_pollGate.Wait(force ? 15_000 : 0)) return;
+        try
+        {
+            if (_adbPath == null || !_serverOk)
+            {
+                // Retry server start every poll until it works (e.g. adb unpacked later).
+                if (!StartServer()) { Publish(new List<ConnectedDevice>(), force); return; }
+            }
+            List<ConnectedDevice> devices;
+            try
+            {
+                devices = ListDevicesOrThrow();
+            }
+            catch (Exception ex)
+            {
+                Log("devices -l failed: " + ex.Message);
+                SetStatus($"adb: {_adbPath} | error: {ex.Message}");
+                _serverOk = false;
+                return;
+            }
+            var ready = devices.Count(d => d.State == "device");
+            SetStatus($"adb: {_adbPath} | server running | {devices.Count} device(s)" +
+                      (devices.Count > ready ? $", {ready} ready" : ""));
+            Publish(devices, force);
+        }
+        catch (Exception ex) { Log("poll error: " + ex); }
+        finally { _pollGate.Release(); }
+    }
+
+    private void Publish(List<ConnectedDevice> devices, bool force)
+    {
+        var last = _last;
+        var changed = force || !devices.Select(d => d.Serial + "|" + d.State + "|" + d.Model).ToHashSet()
+            .SetEquals(last.Select(d => d.Serial + "|" + d.State + "|" + d.Model));
+        if (!changed) return;
+        var newlyAuthorized = devices
+            .Where(d => d.State == "device")
+            .Where(d => last.All(x => x.Serial != d.Serial) ||
+                        last.Any(x => x.Serial == d.Serial && x.State != "device"))
+            .ToList();
+        _last = devices;
+        Log("devices: " + (devices.Count == 0 ? "(none)" : string.Join(", ", devices.Select(d => $"{d.Serial}={d.State}/{d.Model}"))));
+        try { DevicesChanged?.Invoke(devices); } catch (Exception ex) { Log("DevicesChanged handler: " + ex); }
+        foreach (var d in newlyAuthorized)
+            TryOptimizeDevice(d.Serial);
     }
 
     /// <summary>Last state seen by the watcher (thread-safe snapshot).</summary>
@@ -84,26 +264,40 @@ public class AdbService : IDisposable
 
     public List<ConnectedDevice> ListDevices()
     {
-        var devices = new List<ConnectedDevice>();
-        string output;
-        try { output = Run("devices -l"); }
-        catch { return devices; }
+        try { return ListDevicesOrThrow(); } catch { return new List<ConnectedDevice>(); }
+    }
 
-        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1))
+    private List<ConnectedDevice> ListDevicesOrThrow()
+    {
+        var output = Run("devices -l", 15_000);
+        return ParseDevices(output);
+    }
+
+    private static readonly Regex DeviceLine = new(
+        @"^(?<serial>\S+)\s+(?<state>device|unauthorized|offline|recovery|sideload|bootloader|rescue|authorizing|connecting|host|no permissions|unknown)\b(?<rest>.*)$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>Parse `adb devices -l` (CRLF/LF, tabs or spaces, daemon chatter, multi-word states).</summary>
+    public static List<ConnectedDevice> ParseDevices(string output)
+    {
+        var devices = new List<ConnectedDevice>();
+        foreach (var raw in output.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries))
         {
-            var trimmed = line.Trim();
-            if (string.IsNullOrWhiteSpace(trimmed)) continue;
-            var parts = trimmed.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2) continue;
-            var serial = parts[0];
-            var state = parts[1]; // device | unauthorized | offline | recovery
-            var model = "Phone";
-            var modelIdx = trimmed.IndexOf("model:", StringComparison.Ordinal);
-            if (modelIdx >= 0)
+            var line = raw.Trim();
+            if (line.Length == 0 || line.StartsWith("*") ||
+                line.StartsWith("List of devices", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("adb ", StringComparison.OrdinalIgnoreCase)) continue;
+            var m = DeviceLine.Match(line);
+            if (!m.Success) continue;
+            var serial = m.Groups["serial"].Value;
+            var state = m.Groups["state"].Value.ToLowerInvariant();
+            var rest = m.Groups["rest"].Value;
+            string? Field(string key)
             {
-                var rest = trimmed[(modelIdx + 6)..];
-                model = rest.Split(' ')[0].Replace('_', ' ');
+                var mm = Regex.Match(rest, @"(?:^|\s)" + key + @":(\S+)");
+                return mm.Success ? mm.Groups[1].Value.Replace('_', ' ') : null;
             }
+            var model = Field("model") ?? Field("device") ?? Field("product") ?? "Phone";
             devices.Add(new ConnectedDevice(serial, model, state));
         }
         return devices;
@@ -187,27 +381,54 @@ public class AdbService : IDisposable
         catch { /* public path may be restricted on some OEMs */ }
     }
 
-    public string Run(string args)
+    public string Run(string args) => Run(args, 30 * 60_000);
+
+    /// <summary>
+    /// Run adb with event-based output capture and a hard timeout. Never blocks on
+    /// pipe EOF (which a forked adb daemon may hold open).
+    /// </summary>
+    public string Run(string args, int timeoutMs)
     {
+        if (_adbPath == null) throw new InvalidOperationException("adb.exe not found.");
+        var psi = new ProcessStartInfo
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = _adbPath,
-                Arguments = args,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            using var p = Process.Start(psi) ?? throw new InvalidOperationException("Could not start adb.");
-            var errTask = p.StandardError.ReadToEndAsync();
-            var stdout = p.StandardOutput.ReadToEnd();
-            p.WaitForExit();
-            var stderr = errTask.GetAwaiter().GetResult();
-            if (p.ExitCode != 0 && string.IsNullOrWhiteSpace(stdout))
-                throw new InvalidOperationException(string.IsNullOrWhiteSpace(stderr) ? $"adb failed: {args}" : stderr.Trim());
-            return stdout;
+            FileName = _adbPath,
+            Arguments = args,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
+        using var outDone = new ManualResetEventSlim();
+        using var errDone = new ManualResetEventSlim();
+        using var p = new Process { StartInfo = psi };
+        p.OutputDataReceived += (_, e) => { if (e.Data == null) outDone.Set(); else lock (stdout) stdout.AppendLine(e.Data); };
+        p.ErrorDataReceived += (_, e) => { if (e.Data == null) errDone.Set(); else lock (stderr) stderr.AppendLine(e.Data); };
+        if (!p.Start()) throw new InvalidOperationException("Could not start adb.");
+        p.BeginOutputReadLine();
+        p.BeginErrorReadLine();
+        if (!p.WaitForExit(timeoutMs))
+        {
+            try { p.Kill(true); } catch { }
+            Log($"TIMEOUT adb {args}");
+            throw new TimeoutException($"adb {args} timed out");
         }
+        // Drain whatever is buffered; don't wait forever for EOF.
+        outDone.Wait(2000);
+        errDone.Wait(500);
+        string so, se;
+        lock (stdout) so = stdout.ToString();
+        lock (stderr) se = stderr.ToString();
+        if (p.ExitCode != 0 && string.IsNullOrWhiteSpace(so))
+        {
+            Log($"adb {args} exit={p.ExitCode}: {se.Trim()}");
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(se) ? $"adb failed: {args}" : se.Trim());
+        }
+        return so;
     }
 
     public void Dispose() => StopWatching();
