@@ -1,22 +1,24 @@
 <resources>
     <!-- Surfaces (dark, slightly warm) -->
-    <color name="bg_dark">#0A0A0C</color>
-    <color name="bg_panel">#141417</color>
-    <color name="bg_elevated">#1C1C21</color>
-    <color name="surface_high">#25252C</color>
+    <color name="bg_dark">#0B0F14</color>
+    <color name="bg_panel">#121821</color>
+    <color name="bg_elevated">#1A2230</color>
+    <color name="surface_high">#232D3D</color>
     <color name="stroke">#1AFFFFFF</color>
     <color name="stroke_strong">#33FFFFFF</color>
 
     <!-- Accent: refined warm orange with a deeper partner for gradients -->
-    <color name="accent">#FF7A1A</color>
-    <color name="accent_light">#FFA04D</color>
-    <color name="accent_deep">#F04A1F</color>
-    <color name="accent_soft">#33FF7A1A</color>
-    <color name="accent_glow">#1FFF7A1A</color>
+    <color name="accent">#2F8CFF</color>
+    <color name="accent_light">#5AA5FF</color>
+    <color name="accent_deep">#1565D8</color>
+    <color name="accent_soft">#332F8CFF</color>
+    <color name="accent_glow">#1F2F8CFF</color>
 
     <!-- Text -->
     <color name="text_primary">#F5F5F7</color>
-    <color name="text_secondary">#B4B4BD</color>
-    <color name="text_muted">#7D7D88</color>
+    <color name="text_secondary">#AEB6C4</color>
+    <color name="text_muted">#788396</color>
 
+    <color name="badge_new">#FF4D4F</color>
+    <color name="nav_bar">#0F141B</color>
 </resources>

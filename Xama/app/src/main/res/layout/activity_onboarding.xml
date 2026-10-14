@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_dark">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/nav_bar"
+        android:paddingStart="16dp"
+        android:paddingEnd="8dp">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/text_primary"
+            android:textSize="19sp"
+            android:fontFamily="sans-serif-medium"
+            android:text="Connect to shop PC"/>
+        <TextView
+            android:id="@+id/onbSkip"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:background="?attr/selectableItemBackground"
+            android:textColor="@color/accent_light"
+            android:textSize="15sp"
+            android:text="Skip"/>
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <ImageView
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:src="@drawable/ic_usb"
+                app:tint="@color/accent"
+                android:importantForAccessibility="no"/>
+            <TextView
+                style="@style/Text.Title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Get videos from the shop in one tap"/>
+            <TextView
+                style="@style/Text.Caption"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textSize="14sp"
+                android:text="Do this once. Afterwards, when you plug this phone into the shop computer, just tap “Allow” on the phone and the shop can send videos to Xama."/>
+
+            <TextView style="@style/Text.Section" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="24dp" android:text="1. Turn on Developer options"/>
+            <TextView style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Open Settings › About phone (on some phones: About phone › Software information) and tap “Build number” 7 times. Enter your PIN if asked. You will see “You are now a developer”."/>
+            <TextView
+                android:id="@+id/onbOpenAbout"
+                style="@style/PillButton.Secondary"
+                android:layout_marginTop="12dp"
+                android:text="Open About phone"/>
+
+            <TextView style="@style/Text.Section" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="24dp" android:text="2. Turn on USB debugging"/>
+            <TextView style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Open Developer options (Settings › System › Developer options) and switch on “USB debugging”. Confirm with OK."/>
+            <TextView
+                android:id="@+id/onbOpenDev"
+                style="@style/PillButton.Primary"
+                android:layout_marginTop="12dp"
+                android:text="Open Developer options"/>
+
+            <TextView style="@style/Text.Section" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="24dp" android:text="3. At the shop"/>
+            <TextView style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Plug the phone into the shop computer with a USB cable. When “Allow USB debugging?” appears, tick “Always allow from this computer” and tap Allow."/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:padding="16dp">
+                <TextView android:id="@+id/onbStatusDev" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:textSize="15sp"/>
+                <TextView android:id="@+id/onbStatusAdb" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp" android:textSize="15sp"/>
+                <TextView android:id="@+id/onbReady" style="@style/Text.Caption" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:layout_marginTop="8dp" android:visibility="gone"
+                    android:text="All set. Plug in at the shop and tap Allow."/>
+            </LinearLayout>
+
+            <TextView
+                style="@style/Text.Caption"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="You can open this guide again any time from Me › Connect to shop PC. You can turn USB debugging off again after the transfer."/>
+        </LinearLayout>
+    </ScrollView>
+
+    <TextView
+        android:id="@+id/onbDone"
+        style="@style/PillButton.Primary"
+        android:layout_width="match_parent"
+        android:layout_margin="16dp"
+        android:text="Finish later"/>
+</LinearLayout>

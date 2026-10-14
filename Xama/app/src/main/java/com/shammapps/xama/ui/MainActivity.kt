@@ -2,9 +2,9 @@ package com.shammapps.xama.ui
 
 import android.Manifest
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
@@ -16,6 +16,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.view.animation.AnimationUtils
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -27,7 +28,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.widget.NestedScrollView
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -45,10 +45,14 @@ import com.shammapps.xama.data.VideoFolder
 import com.shammapps.xama.data.VideoRepository
 import com.shammapps.xama.data.WatchHistory
 import com.shammapps.xama.player.PlaybackService
-import com.shammapps.xama.util.ThumbLoader
-import java.util.Calendar
 import java.util.concurrent.Executors
 
+/**
+ * Library home in the classic local-player style shop customers already know:
+ * folder list -> video list (thumbnail, duration, size, resolution, NEW badge),
+ * list/grid toggle, sort and search in the toolbar, docked bottom navigation
+ * (Videos / Music / Protected / Me).
+ */
 @OptIn(UnstableApi::class)
 class MainActivity : AppCompatActivity() {
 
@@ -62,27 +66,30 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_START_INDEX = "start_index"
 
         private const val STATE_TAB = "tab"
-        private const val STATE_CATEGORY = "category"
         private const val STATE_FOLDER = "folder"
         private const val STATE_QUERY = "query"
+        private const val PREFS = "xama_ui"
     }
 
-    private enum class Tab { HOME, FOLDERS, MUSIC, PROTECTED, PROFILE }
-    private enum class Category { ALL, RECENT, REELS, LONG, PROTECTED }
+    private enum class Tab { VIDEOS, MUSIC, PROTECTED, PROFILE }
+    private enum class Sort(val label: String) { NAME("Name"), DATE("Date"), SIZE("Size"), LENGTH("Length") }
 
     private lateinit var repository: VideoRepository
     private var allItems: List<LocalVideo> = emptyList()
     private var videos: List<LocalVideo> = emptyList()
     private var audio: List<LocalVideo> = emptyList()
     private var folders: List<VideoFolder> = emptyList()
-    private var tab = Tab.HOME
-    private var category = Category.ALL
+    private var tab = Tab.VIDEOS
     private var query = ""
+    private var searchOpen = false
     private var openFolder: VideoFolder? = null
     private var pendingFolderName: String? = null
-    private var featured: LocalVideo? = null
+    private var gridMode = false
+    private var sort = Sort.DATE
+    private var sortDescending = true
     private var loading = false
     private var hasLoadedOnce = false
+    private var scanStarted = false
     private var signature = ""
     private val loadExecutor = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
@@ -110,31 +117,34 @@ class MainActivity : AppCompatActivity() {
         reloadAsync(force = true)
     }
 
+    private val prefs by lazy { getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+
     // ---------------------------------------------------------------- lifecycle
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         repository = VideoRepository(this)
+        gridMode = prefs.getBoolean("grid_mode", false)
+        sort = Sort.values().getOrElse(prefs.getInt("sort", Sort.DATE.ordinal)) { Sort.DATE }
+        sortDescending = prefs.getBoolean("sort_desc", true)
 
         savedInstanceState?.let { s ->
-            tab = Tab.values().getOrElse(s.getInt(STATE_TAB, 0)) { Tab.HOME }
-            category = Category.values().getOrElse(s.getInt(STATE_CATEGORY, 0)) { Category.ALL }
+            tab = Tab.values().getOrElse(s.getInt(STATE_TAB, 0)) { Tab.VIDEOS }
             pendingFolderName = s.getString(STATE_FOLDER)
             query = s.getString(STATE_QUERY).orEmpty()
+            searchOpen = query.isNotEmpty()
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
+                    searchOpen -> closeSearch()
                     openFolder != null -> {
                         openFolder = null
-                        tab = Tab.FOLDERS
-                        updateNav()
                         render(animate = true)
                     }
-                    query.isNotEmpty() -> findViewById<EditText>(R.id.searchInput).setText("")
-                    tab != Tab.HOME -> switchTab(Tab.HOME)
+                    tab != Tab.VIDEOS -> switchTab(Tab.VIDEOS)
                     else -> {
                         isEnabled = false
                         onBackPressedDispatcher.onBackPressed()
@@ -149,44 +159,35 @@ class MainActivity : AppCompatActivity() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 query = s?.toString()?.trim().orEmpty()
-                findViewById<View>(R.id.searchClear).visibility = if (query.isEmpty()) View.GONE else View.VISIBLE
                 render()
             }
             override fun afterTextChanged(s: Editable?) {}
         })
-        findViewById<View>(R.id.searchClear).setOnClickListener { search.setText("") }
 
-        findViewById<View>(R.id.navHome).setOnClickListener { switchTab(Tab.HOME) }
-        findViewById<View>(R.id.navFolders).setOnClickListener { switchTab(Tab.FOLDERS) }
+        findViewById<View>(R.id.btnSearch).setOnClickListener { if (searchOpen) closeSearch() else openSearch() }
+        findViewById<View>(R.id.btnViewMode).setOnClickListener {
+            gridMode = !gridMode
+            prefs.edit().putBoolean("grid_mode", gridMode).apply()
+            render(animate = true)
+        }
+        findViewById<View>(R.id.btnSort).setOnClickListener { showSortSheet() }
+        findViewById<View>(R.id.btnMore).setOnClickListener { showMoreSheet() }
+        findViewById<View>(R.id.btnBackFolder).setOnClickListener { onBackPressedDispatcher.onBackPressed() }
+
+        findViewById<View>(R.id.navVideos).setOnClickListener { switchTab(Tab.VIDEOS) }
         findViewById<View>(R.id.navMusic).setOnClickListener { switchTab(Tab.MUSIC) }
         findViewById<View>(R.id.navProtected).setOnClickListener { switchTab(Tab.PROTECTED) }
         findViewById<View>(R.id.navProfile).setOnClickListener { switchTab(Tab.PROFILE) }
-        findViewById<View>(R.id.btnBackFolder).setOnClickListener {
-            openFolder = null
-            render(animate = true)
-        }
-        findViewById<View>(R.id.btnRefresh).setOnClickListener {
-            Toast.makeText(this, "Rescanning library…", Toast.LENGTH_SHORT).show()
-            reloadAsync(force = true)
-        }
-        findViewById<View>(R.id.btnAbout).setOnClickListener { openAbout() }
+
         findViewById<View>(R.id.rowAbout).setOnClickListener { openAbout() }
-        findViewById<View>(R.id.rowRescan).setOnClickListener {
-            Toast.makeText(this, "Rescanning library…", Toast.LENGTH_SHORT).show()
-            reloadAsync(force = true)
-        }
+        findViewById<View>(R.id.rowUsbSetup).setOnClickListener { openUsbSetup() }
+        findViewById<View>(R.id.rowRescan).setOnClickListener { rescan() }
         findViewById<View>(R.id.rowClearHistory).setOnClickListener {
             WatchHistory.clear(this)
-            Toast.makeText(this, "Continue watching cleared", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Watch history cleared", Toast.LENGTH_SHORT).show()
             render()
         }
         findViewById<TextView>(R.id.profileVersion).text = "v${BuildConfig.VERSION_NAME}"
-
-        bindCategory(R.id.catAll, Category.ALL)
-        bindCategory(R.id.catRecent, Category.RECENT)
-        bindCategory(R.id.catReels, Category.REELS)
-        bindCategory(R.id.catLong, Category.LONG)
-        bindCategory(R.id.catProtected, Category.PROTECTED)
 
         findViewById<View>(R.id.miniBody).setOnClickListener {
             startActivity(Intent(this, AudioPlayerActivity::class.java))
@@ -197,19 +198,21 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.miniNext).setOnClickListener { controller?.seekToNext() }
 
         updateNav()
-        styleCategories()
+        updateToolbar()
 
-        // After rotation / recreation show the cached library instantly.
-        if (LibraryCache.items.isNotEmpty()) {
-            applyLibrary(LibraryCache.items)
+        if (LibraryCache.items.isNotEmpty()) applyLibrary(LibraryCache.items)
+
+        // First run: show the USB / shop-PC setup guide before asking for media access.
+        if (savedInstanceState == null && !OnboardingActivity.isDone(this)) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+        } else {
+            startScan()
         }
-        ensurePermission()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putInt(STATE_TAB, tab.ordinal)
-        outState.putInt(STATE_CATEGORY, category.ordinal)
         outState.putString(STATE_FOLDER, openFolder?.name)
         outState.putString(STATE_QUERY, query)
     }
@@ -221,8 +224,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Pick up files that arrived while we were away (incoming / plain folders,
-        // MediaStore). Cheap and off the main thread; re-render only on change.
+        if (!scanStarted) {
+            if (OnboardingActivity.isDone(this)) startScan()
+            return
+        }
         if (hasLoadedOnce && System.currentTimeMillis() - LibraryCache.lastScanMs > 1500) {
             reloadAsync(force = false)
         } else if (hasLoadedOnce) {
@@ -243,6 +248,12 @@ class MainActivity : AppCompatActivity() {
 
     // ---------------------------------------------------------------- loading
 
+    private fun startScan() {
+        if (scanStarted) return
+        scanStarted = true
+        ensurePermission()
+    }
+
     private fun mediaPermissions(): Array<String> =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO)
@@ -256,17 +267,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun ensurePermission() {
         val missing = missingPermissions()
-        if (missing.isEmpty()) {
-            reloadAsync(force = true)
-        } else {
-            // Load what we can right away (protected + app folder), then ask.
-            reloadAsync(force = true)
-            permissionLauncher.launch(missing.toTypedArray())
-        }
+        reloadAsync(force = true)
+        if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
     }
 
-    /** Heavy MediaStore work off the main thread to avoid freezes. */
     private var reloadQueued = false
+
+    private fun rescan() {
+        Toast.makeText(this, "Rescanning…", Toast.LENGTH_SHORT).show()
+        reloadAsync(force = true)
+    }
 
     private fun reloadAsync(force: Boolean) {
         if (loading) {
@@ -298,237 +308,221 @@ class MainActivity : AppCompatActivity() {
         signature = items.joinToString("|") { it.id + ":" + it.title }
         videos = items.filter { !it.isAudio }
         audio = items.filter { it.isAudio }
-        folders = try { repository.loadFolders(items) } catch (_: Exception) { emptyList() }
-        featured = pickFeatured(videos)
+        folders = try { repository.loadFolders(videos) } catch (_: Exception) { emptyList() }
         openFolder = openFolder?.let { f -> folders.find { it.name == f.name } }
         pendingFolderName?.let { name ->
             openFolder = folders.find { it.name == name }
             pendingFolderName = null
         }
-        updateNav()
-        styleCategories()
         render()
     }
 
-    /** Refresh progress bars / continue row without rebuilding lists (keeps scroll). */
+    /** Refresh progress bars / NEW badges without rebuilding lists (keeps scroll). */
     private fun refreshLight() {
-        if (tab == Tab.HOME && openFolder == null) bindContinue()
-        findViewById<RecyclerView>(R.id.homeGrid).adapter?.notifyDataSetChanged()
         findViewById<RecyclerView>(R.id.contentList).adapter?.notifyDataSetChanged()
     }
 
-    private fun pickFeatured(list: List<LocalVideo>): LocalVideo? {
-        if (list.isEmpty()) return null
-        val recent = WatchHistory.resolve(this, list).firstOrNull { !it.isVertical }
-        return recent
-            ?: list.firstOrNull { it.isEncrypted }
-            ?: list.filter { !it.isVertical }.maxByOrNull { it.durationMs }
-            ?: list.first()
+    // ---------------------------------------------------------------- toolbar / navigation
+
+    private fun openSearch() {
+        searchOpen = true
+        updateToolbar()
+        val input = findViewById<EditText>(R.id.searchInput)
+        input.requestFocus()
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+            .showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
     }
 
-    // ---------------------------------------------------------------- navigation
+    private fun closeSearch() {
+        val input = findViewById<EditText>(R.id.searchInput)
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+            .hideSoftInputFromWindow(input.windowToken, 0)
+        searchOpen = false
+        input.setText("")
+        updateToolbar()
+    }
+
+    private fun updateToolbar() {
+        val inList = tab != Tab.PROFILE
+        findViewById<View>(R.id.titleBlock).visibility = if (searchOpen) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.searchInput).visibility = if (searchOpen) View.VISIBLE else View.GONE
+        findViewById<ImageButton>(R.id.btnSearch).apply {
+            visibility = if (inList) View.VISIBLE else View.GONE
+            setImageResource(if (searchOpen) R.drawable.ic_close else R.drawable.ic_search)
+        }
+        val videoScreen = tab == Tab.VIDEOS || tab == Tab.PROTECTED
+        findViewById<ImageButton>(R.id.btnViewMode).apply {
+            visibility = if (videoScreen && !searchOpen) View.VISIBLE else View.GONE
+            setImageResource(if (gridMode) R.drawable.ic_list else R.drawable.ic_grid)
+        }
+        findViewById<View>(R.id.btnSort).visibility = if (inList && !searchOpen) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.btnBackFolder).visibility =
+            if (openFolder != null && !searchOpen) View.VISIBLE else View.GONE
+        findViewById<EditText>(R.id.searchInput).hint = when {
+            tab == Tab.MUSIC -> "Search music"
+            openFolder != null -> "Search in ${openFolder?.name}"
+            else -> "Search videos"
+        }
+    }
 
     private fun switchTab(t: Tab) {
         if (t == tab && openFolder == null) {
-            // Re-tap scrolls to top
-            findViewById<NestedScrollView>(R.id.homeScroll).smoothScrollTo(0, 0)
             findViewById<RecyclerView>(R.id.contentList).smoothScrollToPosition(0)
             return
         }
+        if (searchOpen) closeSearch()
         tab = t
         openFolder = null
         updateNav()
         render(animate = true)
     }
 
-    private fun bindCategory(id: Int, c: Category) {
-        findViewById<TextView>(id).setOnClickListener {
-            if (category == c) return@setOnClickListener
-            category = c
-            styleCategories()
-            render(animate = true)
-        }
-    }
-
     private fun openAbout() = startActivity(Intent(this, AboutActivity::class.java))
+    private fun openUsbSetup() = startActivity(Intent(this, OnboardingActivity::class.java))
 
     private fun updateNav() {
-        fun paint(item: Int, icon: Int, label: Int, selected: Boolean) {
+        fun paint(icon: Int, label: Int, selected: Boolean) {
             val color = ContextCompat.getColor(this, if (selected) R.color.accent else R.color.text_muted)
-            findViewById<View>(item).apply {
-                setBackgroundResource(if (selected) R.drawable.nav_indicator else 0)
-                isSelected = selected
-            }
             findViewById<ImageView>(icon).setColorFilter(color)
-            findViewById<TextView>(label).setTextColor(
-                if (selected) ContextCompat.getColor(this, R.color.accent_light) else color
-            )
+            findViewById<TextView>(label).setTextColor(color)
         }
-        paint(R.id.navHome, R.id.navHomeIcon, R.id.navHomeLabel, tab == Tab.HOME)
-        paint(R.id.navFolders, R.id.navFoldersIcon, R.id.navFoldersLabel, tab == Tab.FOLDERS)
-        paint(R.id.navMusic, R.id.navMusicIcon, R.id.navMusicLabel, tab == Tab.MUSIC)
-        paint(R.id.navProtected, R.id.navProtectedIcon, R.id.navProtectedLabel, tab == Tab.PROTECTED)
-        paint(R.id.navProfile, R.id.navProfileIcon, R.id.navProfileLabel, tab == Tab.PROFILE)
+        paint(R.id.navVideosIcon, R.id.navVideosLabel, tab == Tab.VIDEOS)
+        paint(R.id.navMusicIcon, R.id.navMusicLabel, tab == Tab.MUSIC)
+        paint(R.id.navProtectedIcon, R.id.navProtectedLabel, tab == Tab.PROTECTED)
+        paint(R.id.navProfileIcon, R.id.navProfileLabel, tab == Tab.PROFILE)
     }
 
-    private fun styleCategories() {
-        fun style(id: Int, selected: Boolean) {
-            val v = findViewById<TextView>(id)
-            v.setBackgroundResource(if (selected) R.drawable.chip_selected else R.drawable.chip_unselected)
-            v.setTextColor(if (selected) 0xFFFFFFFF.toInt() else ContextCompat.getColor(this, R.color.text_secondary))
+    private fun showSortSheet() {
+        val sheet = OptionSheet(this, "Sort by", if (sortDescending) "Descending" else "Ascending")
+        Sort.values().forEach { s ->
+            sheet.add(s.label, R.drawable.ic_sort, checked = s == sort) {
+                if (sort == s) sortDescending = !sortDescending else {
+                    sort = s
+                    sortDescending = s != Sort.NAME
+                }
+                prefs.edit().putInt("sort", sort.ordinal).putBoolean("sort_desc", sortDescending).apply()
+                render(animate = true)
+            }
         }
-        style(R.id.catAll, category == Category.ALL)
-        style(R.id.catRecent, category == Category.RECENT)
-        style(R.id.catReels, category == Category.REELS)
-        style(R.id.catLong, category == Category.LONG)
-        style(R.id.catProtected, category == Category.PROTECTED)
+        sheet.add(if (sortDescending) "Switch to ascending" else "Switch to descending", R.drawable.ic_refresh) {
+            sortDescending = !sortDescending
+            prefs.edit().putBoolean("sort_desc", sortDescending).apply()
+            render(animate = true)
+        }
+        sheet.show()
+    }
+
+    private fun showMoreSheet() {
+        OptionSheet(this, "Xama")
+            .add("Refresh", R.drawable.ic_refresh) { rescan() }
+            .add(if (gridMode) "List view" else "Grid view", if (gridMode) R.drawable.ic_list else R.drawable.ic_grid) {
+                gridMode = !gridMode
+                prefs.edit().putBoolean("grid_mode", gridMode).apply()
+                render(animate = true)
+            }
+            .add("Connect to shop PC (USB setup)", R.drawable.ic_usb) { openUsbSetup() }
+            .add("About", R.drawable.ic_info) { openAbout() }
+            .show()
     }
 
     // ---------------------------------------------------------------- rendering
 
-    private fun isLandscape() = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    private fun columns(): Int {
-        val widthDp = resources.configuration.screenWidthDp
-        return when {
-            widthDp >= 900 -> 3
-            widthDp >= 600 || isLandscape() -> 2
-            else -> 1
-        }
+    private fun gridSpan(): Int {
+        val w = resources.configuration.screenWidthDp
+        return (w / 170).coerceIn(2, 6)
     }
 
-    private fun greeting(): String = when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
-        in 5..11 -> "Good morning"
-        in 12..17 -> "Good afternoon"
-        else -> "Good evening"
+    private fun sortVideos(list: List<LocalVideo>): List<LocalVideo> {
+        val sorted = when (sort) {
+            Sort.NAME -> list.sortedBy { it.title.lowercase() }
+            Sort.DATE -> list.sortedBy { it.dateAddedSec }
+            Sort.SIZE -> list.sortedBy { it.sizeBytes }
+            Sort.LENGTH -> list.sortedBy { it.durationMs }
+        }
+        return if (sortDescending) sorted.reversed() else sorted
+    }
+
+    private fun sortFolders(list: List<VideoFolder>): List<VideoFolder> {
+        val sorted = when (sort) {
+            Sort.NAME -> list.sortedBy { it.name.lowercase() }
+            Sort.DATE -> list.sortedBy { f -> f.videos.maxOfOrNull { it.dateAddedSec } ?: 0L }
+            Sort.SIZE -> list.sortedBy { f -> f.videos.sumOf { it.sizeBytes } }
+            Sort.LENGTH -> list.sortedBy { it.videoCount }
+        }
+        return if (sortDescending) sorted.reversed() else sorted
     }
 
     private fun matches(v: LocalVideo): Boolean =
         query.isEmpty() || v.title.contains(query, true) || v.folderName.contains(query, true) ||
             v.artist.contains(query, true) || v.album.contains(query, true)
 
+    private fun watchedIds(): Set<String> = WatchHistory.recentIds(this).toHashSet()
+
     private fun render(animate: Boolean = false) {
         val list = findViewById<RecyclerView>(R.id.contentList)
-        val homeScroll = findViewById<NestedScrollView>(R.id.homeScroll)
         val profile = findViewById<View>(R.id.profilePanel)
         val empty = findViewById<View>(R.id.emptyState)
         val loadingView = findViewById<View>(R.id.loadingState)
-        val backBar = findViewById<View>(R.id.folderBackBar)
-        val categoryScroll = findViewById<View>(R.id.categoryScroll)
-        val searchBar = findViewById<View>(R.id.searchBar)
         val header = findViewById<TextView>(R.id.headerTitle)
-        val countText = findViewById<TextView>(R.id.videoCountText)
+        val sub = findViewById<TextView>(R.id.videoCountText)
 
-        val protectedCount = videos.count { it.isEncrypted }
-        countText.text = when {
-            loading && allItems.isEmpty() -> "Scanning…"
-            allItems.isEmpty() -> "Your private video & music player"
-            else -> buildString {
-                append(if (videos.size == 1) "1 video" else "${videos.size} videos")
-                if (audio.isNotEmpty()) append(" · ${audio.size} tracks")
-                if (protectedCount > 0) append(" · $protectedCount protected")
-            }
-        }
-
-        homeScroll.visibility = View.GONE
+        updateToolbar()
         list.visibility = View.GONE
         profile.visibility = View.GONE
         empty.visibility = View.GONE
         loadingView.visibility = View.GONE
-        backBar.visibility = View.GONE
-        categoryScroll.visibility = if (tab == Tab.HOME && openFolder == null) View.VISIBLE else View.GONE
-        searchBar.visibility = if (tab == Tab.PROFILE) View.GONE else View.VISIBLE
-        val searchInput = findViewById<EditText>(R.id.searchInput)
-        searchInput.hint = when (tab) {
-            Tab.MUSIC -> "Search songs, artists, albums"
-            Tab.FOLDERS -> "Search folders"
-            else -> "Search videos"
-        }
-        list.setPadding(list.paddingLeft, Ui.dp(this, 8), list.paddingRight, list.paddingBottom)
+        sub.visibility = View.GONE
 
         if (loading && allItems.isEmpty() && tab != Tab.PROFILE) {
-            header.text = if (tab == Tab.HOME) greeting() else tabTitle()
+            header.text = getString(R.string.app_name)
             loadingView.visibility = View.VISIBLE
             return
         }
 
+        val watched = watchedIds()
         val folder = openFolder
-        if (folder != null) {
+        if (folder != null && tab == Tab.VIDEOS) {
             header.text = folder.name
-            backBar.visibility = View.VISIBLE
-            categoryScroll.visibility = View.GONE
-            val totalMs = folder.videos.sumOf { it.durationMs }
-            findViewById<TextView>(R.id.folderDetailTitle).text = buildString {
-                append(if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos")
-                if (totalMs > 0) append(" · ").append(Ui.formatDuration(totalMs))
-            }
-            list.setPadding(list.paddingLeft, Ui.dp(this, 56), list.paddingRight, list.paddingBottom)
-            showVideoList(list, empty, folder.videos.filter { matches(it) }.take(300), animate)
+            sub.visibility = View.VISIBLE
+            sub.text = if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos"
+            showVideos(list, sortVideos(folder.videos.filter { matches(it) }), watched, animate)
             return
         }
 
         when (tab) {
-            Tab.HOME -> {
-                header.text = greeting()
-                var items = filterByCategory(videos).filter { matches(it) }
-                val feat = featured?.takeIf { query.isEmpty() && category == Category.ALL }
-                if (feat != null) items = items.filter { it.id != feat.id }
-                items = items.take(80)
-                findViewById<TextView>(R.id.sectionTitle).text = when {
-                    query.isNotEmpty() -> "Results"
-                    else -> when (category) {
-                        Category.ALL -> "Suggested for you"
-                        Category.RECENT -> "Recently added"
-                        Category.REELS -> "Reels & vertical"
-                        Category.LONG -> "Movies & long videos"
-                        Category.PROTECTED -> "Protected titles"
-                    }
+            Tab.VIDEOS -> {
+                header.text = getString(R.string.app_name)
+                if (query.isNotEmpty()) {
+                    // Search across all videos, like the classic players do.
+                    showVideos(list, sortVideos(videos.filter { matches(it) }).take(500), watched, animate)
+                    return
                 }
-                if (items.isEmpty() && feat == null) {
-                    showEmpty(emptyFor(Tab.HOME))
-                } else {
-                    homeScroll.visibility = View.VISIBLE
-                    bindHero(feat)
-                    if (query.isEmpty()) bindContinue() else findViewById<View>(R.id.continueSection).visibility = View.GONE
-                    val grid = findViewById<RecyclerView>(R.id.homeGrid)
-                    grid.layoutManager = GridLayoutManager(this, columns())
-                    grid.adapter = PosterAdapter(items) { openVideo(it, items) }
-                    if (animate) animateList(grid)
-                }
-            }
-            Tab.PROTECTED -> {
-                header.text = "Protected"
-                showVideoList(list, empty, videos.filter { it.isEncrypted && matches(it) }, animate)
-            }
-            Tab.FOLDERS -> {
-                header.text = "Folders"
-                val folderList = folders.filter { f ->
-                    query.isEmpty() || f.name.contains(query, true) || f.videos.any { it.title.contains(query, true) }
-                }
+                val folderList = sortFolders(folders)
                 if (folderList.isEmpty()) {
-                    showEmpty(emptyFor(Tab.FOLDERS))
+                    showEmpty(emptyFor(Tab.VIDEOS))
                 } else {
                     list.visibility = View.VISIBLE
-                    list.layoutManager = GridLayoutManager(this, columns())
-                    list.adapter = FolderAdapter(folderList) { f ->
+                    list.layoutManager = if (gridMode) GridLayoutManager(this, gridSpan()) else LinearLayoutManager(this)
+                    list.adapter = MxFolderAdapter(folderList, gridMode, watched) { f ->
+                        if (searchOpen) closeSearch()
                         openFolder = f
                         render(animate = true)
                     }
                     if (animate) animateList(list)
                 }
             }
+            Tab.PROTECTED -> {
+                header.text = "Protected"
+                showVideos(list, sortVideos(videos.filter { it.isEncrypted && matches(it) }), watched, animate)
+            }
             Tab.MUSIC -> {
                 header.text = "Music"
-                val tracks = audio.filter { matches(it) }
+                val tracks = sortVideos(audio.filter { matches(it) })
                 if (tracks.isEmpty()) {
                     showEmpty(emptyFor(Tab.MUSIC))
                 } else {
                     list.visibility = View.VISIBLE
-                    val cols = columns()
-                    list.layoutManager = GridLayoutManager(this, cols).apply {
-                        spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-                            override fun getSpanSize(position: Int) = if (position == 0) cols else 1
-                        }
-                    }
+                    list.layoutManager = LinearLayoutManager(this)
                     list.adapter = AudioAdapter(tracks, controller?.currentMediaItem?.mediaId) { index, shuffle ->
                         AudioPlayerActivity.start(this, tracks, index, shuffle)
                     }
@@ -536,23 +530,26 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             Tab.PROFILE -> {
-                header.text = "Profile"
+                header.text = "Me"
                 profile.visibility = View.VISIBLE
                 findViewById<TextView>(R.id.statTotal).text = videos.size.toString()
                 findViewById<TextView>(R.id.statMusic).text = audio.size.toString()
-                findViewById<TextView>(R.id.statProtected).text = protectedCount.toString()
+                findViewById<TextView>(R.id.statProtected).text = videos.count { it.isEncrypted }.toString()
                 findViewById<TextView>(R.id.statFolders).text = folders.size.toString()
                 if (animate) profile.startAnimation(AnimationUtils.loadAnimation(this, R.anim.item_fade_up))
             }
         }
     }
 
-    private fun tabTitle() = when (tab) {
-        Tab.HOME -> "Home"
-        Tab.FOLDERS -> "Folders"
-        Tab.MUSIC -> "Music"
-        Tab.PROTECTED -> "Protected"
-        Tab.PROFILE -> "Profile"
+    private fun showVideos(list: RecyclerView, items: List<LocalVideo>, watched: Set<String>, animate: Boolean) {
+        if (items.isEmpty()) {
+            showEmpty(emptyFor(tab))
+            return
+        }
+        list.visibility = View.VISIBLE
+        list.layoutManager = if (gridMode) GridLayoutManager(this, gridSpan()) else LinearLayoutManager(this)
+        list.adapter = MxVideoAdapter(items, gridMode, watched) { openVideo(it, items) }
+        if (animate) animateList(list)
     }
 
     private fun animateList(list: RecyclerView) {
@@ -564,9 +561,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun emptyFor(t: Tab): Empty {
         if (query.isNotEmpty()) {
-            return Empty(R.drawable.ic_search, "No results", "Nothing matches “$query”.", "Clear search") {
-                findViewById<EditText>(R.id.searchInput).setText("")
-            }
+            return Empty(R.drawable.ic_search, "No results", "Nothing matches “$query”.", "Clear search") { closeSearch() }
         }
         val needed = when {
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> Manifest.permission.READ_EXTERNAL_STORAGE
@@ -582,32 +577,20 @@ class MainActivity : AppCompatActivity() {
             ) { requestOrOpenSettings(missing) }
         }
         return when (t) {
-            Tab.MUSIC -> Empty(
-                R.drawable.ic_music, "No music yet",
-                "Songs on this phone (MP3, M4A, AAC, FLAC, WAV, OGG, OPUS) will appear here.",
-                "Rescan"
-            ) { reloadAsync(force = true) }
-            Tab.PROTECTED -> Empty(
-                R.drawable.ic_shield, "No protected videos",
-                "Protected videos sent to this phone will appear here.", "Rescan"
-            ) { reloadAsync(force = true) }
-            Tab.FOLDERS -> Empty(
-                R.drawable.ic_folder, "No folders yet",
-                "Folders with videos on this phone will appear here.", "Rescan"
-            ) { reloadAsync(force = true) }
-            else -> Empty(
-                R.drawable.ic_movie,
-                if (category == Category.ALL) "No videos yet" else "Nothing in this category",
-                "Videos on this phone and files sent to Xama will appear here.", "Rescan"
-            ) { reloadAsync(force = true) }
+            Tab.MUSIC -> Empty(R.drawable.ic_music, "No music yet",
+                "Songs on this phone (MP3, M4A, AAC, FLAC, WAV, OGG, OPUS) will appear here.", "Refresh") { reloadAsync(force = true) }
+            Tab.PROTECTED -> Empty(R.drawable.ic_shield, "No protected videos",
+                "Protected videos sent to this phone will appear here.", "Refresh") { reloadAsync(force = true) }
+            else -> Empty(R.drawable.ic_folder, "No videos yet",
+                "Folders with videos on this phone will appear here.", "Refresh") { reloadAsync(force = true) }
         }
     }
 
     private fun requestOrOpenSettings(missing: List<String>) {
         val canAsk = missing.any { shouldShowRequestPermissionRationale(it) }
-        val asked = getSharedPreferences("xama_ui", MODE_PRIVATE).getBoolean("asked_media", false)
+        val asked = prefs.getBoolean("asked_media", false)
         if (canAsk || !asked) {
-            getSharedPreferences("xama_ui", MODE_PRIVATE).edit().putBoolean("asked_media", true).apply()
+            prefs.edit().putBoolean("asked_media", true).apply()
             permissionLauncher.launch(missing.toTypedArray())
         } else {
             try {
@@ -619,7 +602,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showEmpty(e: Empty) {
-        val empty = findViewById<View>(R.id.emptyState)
+        findViewById<RecyclerView>(R.id.contentList).visibility = View.GONE
         findViewById<ImageView>(R.id.emptyIcon).setImageResource(e.icon)
         findViewById<TextView>(R.id.emptyTitle).text = e.title
         findViewById<TextView>(R.id.emptyMessage).text = e.message
@@ -631,97 +614,20 @@ class MainActivity : AppCompatActivity() {
         } else {
             action.visibility = View.GONE
         }
-        empty.visibility = View.VISIBLE
-    }
-
-    private fun filterByCategory(list: List<LocalVideo>): List<LocalVideo> = when (category) {
-        Category.ALL -> list
-        Category.RECENT -> list.sortedByDescending { it.dateAddedSec }.take(40)
-        Category.REELS -> list.filter { it.isVertical }
-        Category.LONG -> list.filter { !it.isVertical && it.durationMs >= 10 * 60 * 1000 }
-        Category.PROTECTED -> list.filter { it.isEncrypted }
-    }
-
-    private fun bindContinue() {
-        val section = findViewById<View>(R.id.continueSection)
-        val row = findViewById<RecyclerView>(R.id.continueRow)
-        val recent = WatchHistory.resolve(this, videos).take(12)
-        if (recent.isEmpty() || query.isNotEmpty()) {
-            section.visibility = View.GONE
-            return
-        }
-        section.visibility = View.VISIBLE
-        if (row.layoutManager == null) {
-            row.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-        }
-        row.adapter = ContinueAdapter(recent) { openVideo(it, recent) }
-    }
-
-    private fun bindHero(feat: LocalVideo?) {
-        val heroCard = findViewById<View>(R.id.heroCard)
-        if (feat == null) {
-            heroCard.visibility = View.GONE
-            return
-        }
-        heroCard.visibility = View.VISIBLE
-        findViewById<TextView>(R.id.heroKicker).text = when {
-            feat.isEncrypted -> "Protected · Featured"
-            WatchHistory.recentIds(this).firstOrNull() == feat.id -> "Pick up where you left off"
-            else -> "Featured"
-        }
-        findViewById<TextView>(R.id.heroTitle).text = feat.title
-        findViewById<TextView>(R.id.heroMeta).text = buildString {
-            if (feat.durationMs > 0) append(Ui.formatDuration(feat.durationMs))
-            if (feat.folderName.isNotBlank()) {
-                if (isNotEmpty()) append(" · ")
-                append(feat.folderName)
-            }
-        }
-        findViewById<TextView>(R.id.heroPlay).setOnClickListener { openVideo(feat, videos) }
-        findViewById<TextView>(R.id.heroFolder).setOnClickListener {
-            openFolder = folders.find { it.name == feat.folderName }
-                ?: VideoFolder(feat.folderName, 1, listOf(feat))
-            tab = Tab.FOLDERS
-            updateNav()
-            render(animate = true)
-        }
-        heroCard.setOnClickListener { openVideo(feat, videos) }
-        ThumbLoader.load(this, feat, findViewById(R.id.heroImage), "hero-${feat.id}")
-    }
-
-    private fun showVideoList(list: RecyclerView, empty: View, items: List<LocalVideo>, animate: Boolean) {
-        if (items.isEmpty()) {
-            list.visibility = View.GONE
-            showEmpty(emptyFor(tab))
-            return
-        }
-        empty.visibility = View.GONE
-        list.visibility = View.VISIBLE
-        list.layoutManager = GridLayoutManager(this, columns())
-        list.adapter = PosterAdapter(items) { openVideo(it, items) }
-        if (animate) animateList(list)
+        findViewById<View>(R.id.emptyState).visibility = View.VISIBLE
     }
 
     private fun openVideo(video: LocalVideo, context: List<LocalVideo>) {
-        if (video.isVertical) {
-            val verticalOnly = videos.filter { it.isVertical }
-            val startIndex = verticalOnly.indexOfFirst { it.id == video.id }.coerceAtLeast(0)
-            startActivity(Intent(this, ReelsActivity::class.java).apply {
-                putExtra(EXTRA_START_INDEX, startIndex)
-                putStringArrayListExtra("video_ids", ArrayList(verticalOnly.map { it.id }.take(100)))
-            })
-        } else {
-            val playlist = context.filter { !it.isAudio }.take(500)
-            startActivity(Intent(this, PlayerActivity::class.java).apply {
-                putExtra(EXTRA_VIDEO_ID, video.id)
-                putExtra(EXTRA_TITLE, video.title)
-                putExtra(EXTRA_FILE_PATH, video.filePath)
-                putExtra(EXTRA_CONTENT_URI, video.contentUri)
-                putExtra(EXTRA_IS_ENCRYPTED, video.isEncrypted)
-                putExtra(EXTRA_IV_BASE64, video.ivBase64)
-                putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST_IDS, ArrayList(playlist.map { it.id }))
-            })
-        }
+        val playlist = context.filter { !it.isAudio }.take(500)
+        startActivity(Intent(this, PlayerActivity::class.java).apply {
+            putExtra(EXTRA_VIDEO_ID, video.id)
+            putExtra(EXTRA_TITLE, video.title)
+            putExtra(EXTRA_FILE_PATH, video.filePath)
+            putExtra(EXTRA_CONTENT_URI, video.contentUri)
+            putExtra(EXTRA_IS_ENCRYPTED, video.isEncrypted)
+            putExtra(EXTRA_IV_BASE64, video.ivBase64)
+            putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST_IDS, ArrayList(playlist.map { it.id }))
+        })
     }
 
     // ---------------------------------------------------------------- mini player
@@ -786,14 +692,9 @@ class MainActivity : AppCompatActivity() {
         updateMiniProgress()
     }
 
-    /** Keeps the last list rows clear of the floating nav (+ mini player). */
-    private fun adjustBottomPadding(miniVisible: Boolean) {
-        val bottom = Ui.dp(this, if (miniVisible) 188 else 120)
-        for (id in intArrayOf(R.id.contentList, R.id.homeScroll, R.id.profilePanel)) {
-            val v = findViewById<View>(id)
-            v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, bottom)
-        }
-    }
+    /** Docked layout: the mini player takes its own row, nothing to pad. */
+    @Suppress("UNUSED_PARAMETER")
+    private fun adjustBottomPadding(miniVisible: Boolean) {}
 
     private fun updateMiniProgress() {
         val c = controller ?: return

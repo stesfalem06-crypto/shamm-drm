@@ -201,6 +201,8 @@ class VideoRepository(private val context: Context) {
                             sizeBytes = if (sizeCol >= 0) cursor.getLong(sizeCol) else 0L,
                             displayName = name,
                             dateAddedSec = if (dateCol >= 0) cursor.getLong(dateCol) else 0L,
+                            width = width,
+                            height = height,
                         )
                     )
                 }

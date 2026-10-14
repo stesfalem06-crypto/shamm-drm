@@ -25,6 +25,9 @@ data class LocalVideo(
     /** File name with extension (used for de-duplication). */
     val displayName: String = "",
     val dateAddedSec: Long = 0L,
+    /** Video frame size from MediaStore (0 when unknown). */
+    val width: Int = 0,
+    val height: Int = 0,
 )
 
 data class VideoFolder(

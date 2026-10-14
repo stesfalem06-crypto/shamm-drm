@@ -23,6 +23,7 @@ import android.provider.Settings
 import android.util.Rational
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
@@ -223,6 +224,8 @@ class PlayerActivity : AppCompatActivity() {
     private var seekAccumSec = 0
     private var consumedTap = false
     private var touchSlop = 24
+    private var pinching = false
+    private var pinchScale = 1f
 
     private val pickSubtitle = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) attachSubtitle(uri)
@@ -351,6 +354,7 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        resumeDialog?.dismiss()
         handler.removeCallbacksAndMessages(null)
         if (receiverRegistered) {
             try { unregisterReceiver(pipReceiver) } catch (_: Exception) {}
@@ -635,6 +639,7 @@ class PlayerActivity : AppCompatActivity() {
         val exo = buildPlayer()
         exo.setMediaSource(withSubs)
 
+        var askResumeAt = -1L
         if (startPositionMs != null) {
             exo.seekTo(startPositionMs)
         } else {
@@ -643,11 +648,16 @@ class PlayerActivity : AppCompatActivity() {
                 (saved.durationMs <= 0 || saved.positionMs < saved.durationMs - 10_000)
             ) {
                 exo.seekTo(saved.positionMs)
-                showResumeChip(saved.positionMs)
+                askResumeAt = saved.positionMs
             }
         }
         exo.prepare()
-        exo.playWhenReady = true
+        if (askResumeAt > 0) {
+            exo.playWhenReady = false
+            showResumePrompt(item, askResumeAt)
+        } else {
+            exo.playWhenReady = true
+        }
         updatePrevNext()
         applyAspect()
     }
@@ -877,6 +887,33 @@ class PlayerActivity : AppCompatActivity() {
         handler.postDelayed(hideUnlockRunnable, 2500)
     }
 
+    private var resumeDialog: androidx.appcompat.app.AlertDialog? = null
+
+    /** Classic "resume from last position?" prompt shown before playback starts. */
+    private fun showResumePrompt(item: LocalVideo, positionMs: Long) {
+        resumeDialog?.dismiss()
+        var decided = false
+        resumeDialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("Resume playback?")
+            .setMessage("Continue “${item.title}” from ${Ui.formatDuration(positionMs)}?")
+            .setPositiveButton("Resume") { _, _ ->
+                decided = true
+                player?.playWhenReady = true
+            }
+            .setNegativeButton("Start over") { _, _ ->
+                decided = true
+                player?.seekTo(0)
+                PlaybackPositions.clear(this, item.id)
+                player?.playWhenReady = true
+            }
+            .setOnDismissListener {
+                // Back / tap outside = resume, like the classic players.
+                if (!decided && !isFinishing) player?.playWhenReady = true
+                resumeDialog = null
+            }
+            .show()
+    }
+
     private fun showResumeChip(positionMs: Long) {
         findViewById<TextView>(R.id.resumeText).text = "Resumed from ${Ui.formatDuration(positionMs)}"
         resumeChip.visibility = View.VISIBLE
@@ -922,9 +959,34 @@ class PlayerActivity : AppCompatActivity() {
             }
         })
 
+        val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+                pinching = true
+                gestureMode = GestureMode.NONE
+                hideControls()
+                return true
+            }
+
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                pinchScale = (pinchScale * detector.scaleFactor).coerceIn(0.5f, 4f)
+                playerView.scaleX = pinchScale
+                playerView.scaleY = pinchScale
+                showHint("Zoom ${(pinchScale * 100).toInt()}%")
+                return true
+            }
+        })
+
         touchLayer.setOnTouchListener { _, ev ->
             if (locked) {
                 if (ev.actionMasked == MotionEvent.ACTION_UP) showUnlockHint()
+                return@setOnTouchListener true
+            }
+            scaleDetector.onTouchEvent(ev)
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) pinching = false
+            if (pinching || ev.pointerCount > 1) {
+                if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    pinching = false
+                }
                 return@setOnTouchListener true
             }
             detector.onTouchEvent(ev)
@@ -1071,7 +1133,14 @@ class PlayerActivity : AppCompatActivity() {
 
     // ---------------------------------------------------------------- aspect / rotation
 
+    private fun resetZoom() {
+        pinchScale = 1f
+        playerView.scaleX = 1f
+        playerView.scaleY = 1f
+    }
+
     private fun cycleAspect() {
+        resetZoom()
         aspect = Aspect.values()[(aspect.ordinal + 1) % Aspect.values().size]
         applyAspect()
         showHint(aspect.label)
