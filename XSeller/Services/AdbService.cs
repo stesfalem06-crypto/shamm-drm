@@ -18,7 +18,6 @@ public record ConnectedDevice(string Serial, string Model, string State);
 public class AdbService : IDisposable
 {
     private readonly string _adbPath;
-    private readonly object _gate = new();
     private CancellationTokenSource? _watchCts;
     private List<ConnectedDevice> _last = new();
 
@@ -50,9 +49,8 @@ public class AdbService : IDisposable
                 try
                 {
                     var devices = ListDevices();
-                    var changed = devices.Count != _last.Count ||
-                                  devices.Select(d => d.Serial + d.State)
-                                      .Except(_last.Select(d => d.Serial + d.State)).Any();
+                    var changed = !devices.Select(d => d.Serial + "|" + d.State + "|" + d.Model).ToHashSet()
+                        .SetEquals(_last.Select(d => d.Serial + "|" + d.State + "|" + d.Model));
                     if (changed)
                     {
                         var newlyAuthorized = devices
@@ -71,6 +69,12 @@ public class AdbService : IDisposable
             }
         }, token);
     }
+
+    /// <summary>Last state seen by the watcher (thread-safe snapshot).</summary>
+    public IReadOnlyList<ConnectedDevice> LastDevices => _last;
+
+    /// <summary>True when the watcher last saw this serial as authorized ("device").</summary>
+    public bool IsReady(string serial) => _last.Any(d => d.Serial == serial && d.State == "device");
 
     public void StopWatching()
     {
@@ -185,7 +189,6 @@ public class AdbService : IDisposable
 
     public string Run(string args)
     {
-        lock (_gate)
         {
             var psi = new ProcessStartInfo
             {
@@ -197,9 +200,10 @@ public class AdbService : IDisposable
                 CreateNoWindow = true,
             };
             using var p = Process.Start(psi) ?? throw new InvalidOperationException("Could not start adb.");
+            var errTask = p.StandardError.ReadToEndAsync();
             var stdout = p.StandardOutput.ReadToEnd();
-            var stderr = p.StandardError.ReadToEnd();
-            p.WaitForExit(120_000);
+            p.WaitForExit();
+            var stderr = errTask.GetAwaiter().GetResult();
             if (p.ExitCode != 0 && string.IsNullOrWhiteSpace(stdout))
                 throw new InvalidOperationException(string.IsNullOrWhiteSpace(stderr) ? $"adb failed: {args}" : stderr.Trim());
             return stdout;

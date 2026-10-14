@@ -47,7 +47,7 @@
                      FontSize="16" VerticalContentAlignment="Center" Padding="16,0"
                      Foreground="{StaticResource TextPrimary}" CaretBrush="{StaticResource Accent}"
                      TextChanged="SearchBox_TextChanged"/>
-            <TextBlock x:Name="SearchPlaceholder" Text="Search everything — title, path, video, pdf, image, exe, protected…"
+            <TextBlock x:Name="SearchPlaceholder" Text="Search everything — type part of a name or path (space = AND)"
                        Foreground="{StaticResource TextMuted}" FontSize="15"
                        VerticalAlignment="Center" Margin="18,0,0,0" IsHitTestVisible="False"/>
         </Grid>
@@ -100,14 +100,41 @@
                 <Grid>
                     <ListView x:Name="ResultsList" Background="Transparent" BorderThickness="0"
                               Foreground="{StaticResource TextPrimary}"
-                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                              SelectionMode="Extended"
+                              VirtualizingPanel.IsVirtualizing="True"
+                              VirtualizingPanel.VirtualizationMode="Recycling"
+                              VirtualizingPanel.ScrollUnit="Item"
+                              ScrollViewer.IsDeferredScrollingEnabled="False"
+                              GridViewColumnHeader.Click="ResultsHeader_Click"
+                              MouseDoubleClick="ResultsList_MouseDoubleClick"
+                              PreviewKeyDown="ResultsList_PreviewKeyDown">
+                        <ListView.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Open" InputGestureText="Ctrl+Enter" Click="MenuOpen_Click"/>
+                                <MenuItem Header="Open folder" Click="MenuOpenFolder_Click"/>
+                                <MenuItem Header="Copy path" InputGestureText="Ctrl+Shift+C" Click="MenuCopyPath_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Add to send queue" InputGestureText="Enter" Click="MenuQueue_Click"/>
+                                <MenuItem Header="Send to phone" Click="MenuSend_Click"/>
+                            </ContextMenu>
+                        </ListView.ContextMenu>
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Title" Width="320" DisplayMemberBinding="{Binding Title}"/>
-                                <GridViewColumn Header="Type" Width="90" DisplayMemberBinding="{Binding KindLabel}"/>
-                                <GridViewColumn Header="Format" Width="70" DisplayMemberBinding="{Binding FormatLabel}"/>
-                                <GridViewColumn Header="Price" Width="60" DisplayMemberBinding="{Binding TokenPrice}"/>
-                                <GridViewColumn Header="Size" Width="80" DisplayMemberBinding="{Binding SizeLabel}"/>
+                                <GridViewColumn Width="300" DisplayMemberBinding="{Binding Name}">
+                                    <GridViewColumnHeader Content="Name" Tag="Name"/>
+                                </GridViewColumn>
+                                <GridViewColumn Width="300" DisplayMemberBinding="{Binding Folder}">
+                                    <GridViewColumnHeader Content="Path" Tag="Path"/>
+                                </GridViewColumn>
+                                <GridViewColumn Width="80" DisplayMemberBinding="{Binding SizeLabel}">
+                                    <GridViewColumnHeader Content="Size" Tag="Size"/>
+                                </GridViewColumn>
+                                <GridViewColumn Width="125" DisplayMemberBinding="{Binding ModifiedLabel}">
+                                    <GridViewColumnHeader Content="Date modified" Tag="Modified"/>
+                                </GridViewColumn>
+                                <GridViewColumn Width="110" DisplayMemberBinding="{Binding TypeLabel}">
+                                    <GridViewColumnHeader Content="Type" Tag="Type"/>
+                                </GridViewColumn>
                             </GridView>
                         </ListView.View>
                     </ListView>
@@ -119,10 +146,17 @@
 
             <Border Grid.Column="2" Background="{StaticResource BgPanel}" CornerRadius="14" Padding="16">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Connected phones" FontSize="13"
+                    <TextBlock DockPanel.Dock="Top" Text="Phones (tick to send)" FontSize="13"
                                Foreground="{StaticResource TextMuted}" Margin="0,0,0,8"/>
                     <StackPanel DockPanel.Dock="Bottom">
-                        <Button Content="Send to phone" Style="{StaticResource PrimaryButton}"
+                        <Grid Margin="0,0,0,6">
+                            <TextBlock x:Name="QueueText" Text="Queue empty · Enter adds selection" FontSize="11"
+                                       Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
+                            <TextBlock HorizontalAlignment="Right" FontSize="11" Cursor="Hand"
+                                       Foreground="{StaticResource Accent}" Text="Clear"
+                                       MouseLeftButtonUp="ClearQueue_Click"/>
+                        </Grid>
+                        <Button Content="Send" Style="{StaticResource PrimaryButton}"
                                 Margin="0,0,0,8" Click="Send_Click" x:Name="SendButton"/>
                         <Button Content="Copy to USB / folder…" Style="{StaticResource PrimaryButton}"
                                 Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
@@ -144,13 +178,62 @@
                         <Button Content="Add media folder…" Style="{StaticResource PrimaryButton}"
                                 Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
                                 Margin="0,0,0,6" Click="AddFolder_Click"/>
+                        <CheckBox x:Name="AllDrivesCheck" Content="Index all fixed drives"
+                                  Foreground="{StaticResource TextPrimary}" FontSize="11" Margin="0,0,0,6"
+                                  Click="AllDrives_Click"/>
                         <Button Content="Remove selected folder" Style="{StaticResource PrimaryButton}"
                                 Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
                                 Click="RemoveFolder_Click"/>
                     </StackPanel>
                     <Grid>
-                        <ListBox x:Name="DevicesList" Background="Transparent" BorderThickness="0"
-                                 Foreground="{StaticResource TextPrimary}"/>
+                        <ItemsControl x:Name="DevicesList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#1E1E2A" CornerRadius="8" Padding="8" Margin="0,0,0,6">
+                                        <StackPanel>
+                                            <CheckBox IsChecked="{Binding IsChecked}" IsEnabled="{Binding IsReady}"
+                                                      Foreground="{StaticResource TextPrimary}">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Model}" FontWeight="SemiBold"/>
+                                                    <TextBlock FontSize="11" Foreground="{StaticResource TextMuted}">
+                                                        <Run Text="{Binding StateLabel, Mode=OneWay}"/>
+                                                        <Run Text=" · "/>
+                                                        <Run Text="{Binding Serial, Mode=OneWay}"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </CheckBox>
+                                            <TextBlock Text="{Binding Hint}" FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource Accent}" Margin="0,4,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Hint}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <ProgressBar Height="4" Margin="0,6,0,0" Maximum="100" Value="{Binding Progress}"
+                                                         Background="#2A2A3A" Foreground="{StaticResource Accent}" BorderThickness="0">
+                                                <ProgressBar.Style>
+                                                    <Style TargetType="ProgressBar">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Busy}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ProgressBar.Style>
+                                            </ProgressBar>
+                                            <TextBlock Text="{Binding ProgressText}" FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{StaticResource TextMuted}" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <StackPanel x:Name="DevicesEmpty" VerticalAlignment="Center" Margin="4">
                             <TextBlock Text="Waiting for phone…" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap"/>

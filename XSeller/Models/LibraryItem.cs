@@ -20,6 +20,19 @@ public class LibraryItem
     public DateTime IndexedAtUtc { get; set; } = DateTime.UtcNow;
     public string? IvBase64 { get; set; }
     public string? WrappedContentKeyForShopsBase64 { get; set; }
+    public DateTime ModifiedUtc { get; set; }
+
+    /// <summary>Display name (file name; protected packages show their title).</summary>
+    public string Name => _name ??= IsEncrypted ? Title : Path.GetFileName(FilePath);
+    private string? _name;
+
+    /// <summary>Containing folder, Everything-style "Path" column.</summary>
+    public string Folder => Path.GetDirectoryName(FilePath) ?? "";
+
+    public string TypeLabel => IsEncrypted ? "Protected (" + FormatLabel + ")"
+        : Kind == MediaKind.Other ? FormatLabel + " file" : FormatLabel + " " + KindLabel;
+
+    public string ModifiedLabel => ModifiedUtc == default ? "" : ModifiedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 
     public string KindLabel => Kind switch
     {
@@ -28,7 +41,7 @@ public class LibraryItem
         MediaKind.Pdf => "PDF",
         MediaKind.Image => "Image",
         MediaKind.Exe => "Exe",
-        _ => "Open",
+        _ => "File",
     };
 
     public string FormatLabel

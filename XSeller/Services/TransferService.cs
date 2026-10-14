@@ -7,6 +7,7 @@ public class TransferService
 {
     private readonly AdbService _adb;
     private readonly LedgerDatabase _ledger;
+    private static readonly object LedgerGate = new();
 
     public TransferService(AdbService adb, LedgerDatabase ledger)
     {
@@ -47,8 +48,11 @@ public class TransferService
                     wrappedForPhone, NativeCrypto.WrappedKeyLen);
                 if (rc3 != 0) throw new InvalidOperationException("Failed to lock video to the phone.");
 
-                var keyFilePath = Path.Combine(Path.GetTempPath(), $"{video.VideoId}.shammkey");
-                var metaFilePath = Path.Combine(Path.GetTempPath(), $"{video.VideoId}.shammmeta");
+                // Temp names are unique per send so parallel sends of the same package
+                // to several phones never overwrite each other's device-bound key.
+                var tmpTag = Guid.NewGuid().ToString("N");
+                var keyFilePath = Path.Combine(Path.GetTempPath(), $"{video.VideoId}.{tmpTag}.shammkey");
+                var metaFilePath = Path.Combine(Path.GetTempPath(), $"{video.VideoId}.{tmpTag}.shammmeta");
                 File.WriteAllBytes(keyFilePath, wrappedForPhone);
                 File.WriteAllText(metaFilePath, System.Text.Json.JsonSerializer.Serialize(video));
                 try
@@ -63,7 +67,7 @@ public class TransferService
                     try { File.Delete(metaFilePath); } catch { }
                 }
 
-                _ledger.RecordTransfer(new LedgerEntry
+                lock (LedgerGate) _ledger.RecordTransfer(new LedgerEntry
                 {
                     VideoId = video.VideoId,
                     VideoTitle = video.Title,
