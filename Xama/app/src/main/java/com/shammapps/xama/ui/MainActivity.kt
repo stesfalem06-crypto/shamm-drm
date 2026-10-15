@@ -175,6 +175,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnBackFolder).setOnClickListener { onBackPressedDispatcher.onBackPressed() }
 
         findViewById<View>(R.id.navVideos).setOnClickListener { switchTab(Tab.VIDEOS) }
+        findViewById<View>(R.id.navReels).setOnClickListener { openReels(null) }
         findViewById<View>(R.id.navMusic).setOnClickListener { switchTab(Tab.MUSIC) }
         findViewById<View>(R.id.navProtected).setOnClickListener { switchTab(Tab.PROTECTED) }
         findViewById<View>(R.id.navProfile).setOnClickListener { switchTab(Tab.PROFILE) }
@@ -386,6 +387,7 @@ class MainActivity : AppCompatActivity() {
             findViewById<ImageView>(icon).setColorFilter(color)
             findViewById<TextView>(label).setTextColor(color)
         }
+        paint(R.id.navReelsIcon, R.id.navReelsLabel, false)
         paint(R.id.navVideosIcon, R.id.navVideosLabel, tab == Tab.VIDEOS)
         paint(R.id.navMusicIcon, R.id.navMusicLabel, tab == Tab.MUSIC)
         paint(R.id.navProtectedIcon, R.id.navProtectedLabel, tab == Tab.PROTECTED)
@@ -615,6 +617,24 @@ class MainActivity : AppCompatActivity() {
             action.visibility = View.GONE
         }
         findViewById<View>(R.id.emptyState).visibility = View.VISIBLE
+    }
+
+    /**
+     * TikTok-style vertical feed. Uses portrait videos first; if there are none,
+     * falls back to all videos so the feed is never empty.
+     */
+    private fun openReels(start: LocalVideo?) {
+        val vertical = videos.filter { it.isVertical }
+        val feed = (if (vertical.isNotEmpty()) vertical + videos.filter { !it.isVertical } else videos).take(200)
+        if (feed.isEmpty()) {
+            Toast.makeText(this, if (loading) "Still scanning…" else "No videos found for Reels", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val startIndex = start?.let { s -> feed.indexOfFirst { it.id == s.id } }?.coerceAtLeast(0) ?: 0
+        startActivity(Intent(this, ReelsActivity::class.java).apply {
+            putExtra(EXTRA_START_INDEX, startIndex)
+            putStringArrayListExtra("video_ids", ArrayList(feed.map { it.id }))
+        })
     }
 
     private fun openVideo(video: LocalVideo, context: List<LocalVideo>) {

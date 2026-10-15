@@ -186,6 +186,10 @@
             <ImageView android:id="@+id/navVideosIcon" style="@style/NavIcon" android:src="@drawable/ic_movie" android:importantForAccessibility="no"/>
             <TextView android:id="@+id/navVideosLabel" style="@style/NavLabel" android:text="Videos"/>
         </LinearLayout>
+        <LinearLayout android:id="@+id/navReels" style="@style/NavItem">
+            <ImageView android:id="@+id/navReelsIcon" style="@style/NavIcon" android:src="@drawable/ic_reels" android:importantForAccessibility="no"/>
+            <TextView android:id="@+id/navReelsLabel" style="@style/NavLabel" android:text="Reels"/>
+        </LinearLayout>
         <LinearLayout android:id="@+id/navMusic" style="@style/NavItem">
             <ImageView android:id="@+id/navMusicIcon" style="@style/NavIcon" android:src="@drawable/ic_music" android:importantForAccessibility="no"/>
             <TextView android:id="@+id/navMusicLabel" style="@style/NavLabel" android:text="Music"/>

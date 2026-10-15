@@ -34,6 +34,8 @@ class ReelsActivity : AppCompatActivity() {
             }
         })
 
+        findViewById<android.view.View>(R.id.reelsBack).setOnClickListener { finish() }
+
         val ids = intent.getStringArrayListExtra("video_ids") ?: arrayListOf()
         val startIndex = intent.getIntExtra(MainActivity.EXTRA_START_INDEX, 0)
 
