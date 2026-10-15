@@ -27,6 +27,24 @@
          workflow at build time (see build-xseller.yml) and dropped into
          platform-tools/ next to the published exe - you never have to
          install or configure ADB yourself. -->
+    <None Include="drivers\install-drivers.cmd" CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
+
+  <!-- Bundle signed ADB USB drivers next to the published exe (drivers\). Done here
+       rather than in the workflow so no workflow change is needed. Failures only warn. -->
+  <Target Name="BundleAdbDrivers" AfterTargets="Publish" Condition="'$(OS)' == 'Windows_NT'">
+    <PropertyGroup>
+      <DrvDir>$(PublishDir)drivers\</DrvDir>
+      <DrvTmp>$(IntermediateOutputPath)drvdl\</DrvTmp>
+    </PropertyGroup>
+    <DownloadFile SourceUrl="https://dl.google.com/android/repository/usb_driver_r13-windows.zip"
+                  DestinationFolder="$(DrvTmp)" Retries="3" ContinueOnError="WarnAndContinue" />
+    <Unzip SourceFiles="$(DrvTmp)usb_driver_r13-windows.zip" DestinationFolder="$(DrvDir)"
+           Condition="Exists('$(DrvTmp)usb_driver_r13-windows.zip')" ContinueOnError="WarnAndContinue" />
+    <DownloadFile SourceUrl="https://github.com/koush/adb.clockworkmod.com/releases/download/v1.0.0/UniversalAdbDriverSetup.msi"
+                  DestinationFolder="$(DrvDir)" DestinationFileName="UniversalAdbDriverSetup.msi"
+                  Retries="3" ContinueOnError="WarnAndContinue" />
+  </Target>
 
 </Project>

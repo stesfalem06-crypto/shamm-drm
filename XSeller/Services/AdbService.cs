@@ -130,23 +130,65 @@ public class AdbService : IDisposable
             SetStatus("adb not found — reinstall X Seller (platform-tools folder missing next to XSeller.exe)");
             return false;
         }
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            try
+            {
+                // A different adb (phone suites, old SDKs) on port 5037 makes ours fail or
+                // keeps killing our server ("server version doesn't match"). Remove it.
+                if (attempt == 2 || restart || !_foreignChecked) KillForeignAdb(killOurs: attempt == 2 || restart);
+                _foreignChecked = true;
+                var code = RunNoRedirect("start-server", 30_000);
+                Log($"start-server attempt {attempt} exit={code} path={_adbPath}");
+                // Verify the server actually answers.
+                Run("devices", 15_000);
+                _serverOk = true;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _serverOk = false;
+                Log($"start-server attempt {attempt} failed: {ex.Message}");
+                SetStatus($"adb: {_adbPath} | server not responding: {ex.Message}");
+            }
+        }
+        return false;
+    }
+
+    private bool _foreignChecked;
+
+    /// <summary>Kill adb.exe processes that are not ours (and optionally ours too).</summary>
+    public void KillForeignAdb(bool killOurs)
+    {
         try
         {
-            if (restart) RunNoRedirect("kill-server", 10_000);
-            var code = RunNoRedirect("start-server", 30_000);
-            _serverOk = code == 0;
-            Log($"start-server exit={code} path={_adbPath}");
-            if (!_serverOk) SetStatus($"adb: {_adbPath} | server failed to start (exit {code}) — another adb/phone suite may hold port 5037");
-            return _serverOk;
+            foreach (var p in Process.GetProcessesByName("adb"))
+            {
+                using (p)
+                {
+                    string? path = null;
+                    try { path = p.MainModule?.FileName; } catch { /* access denied for elevated procs */ }
+                    var ours = path != null && string.Equals(Path.GetFullPath(path), _adbPath, StringComparison.OrdinalIgnoreCase);
+                    if (ours && !killOurs) continue;
+                    try
+                    {
+                        p.Kill(true);
+                        Log($"killed adb pid={p.Id} path={path ?? "?"} ({(ours ? "ours, restart" : "foreign")})");
+                    }
+                    catch (Exception ex) { Log($"could not kill adb pid={p.Id} path={path ?? "?"}: {ex.Message}"); }
+                }
+            }
         }
-        catch (Exception ex)
-        {
-            _serverOk = false;
-            Log("start-server error: " + ex);
-            SetStatus($"adb: {_adbPath} | cannot run adb: {ex.Message}");
-            return false;
-        }
+        catch (Exception ex) { Log("KillForeignAdb: " + ex.Message); }
     }
+
+    /// <summary>Poll right now (USB plug/unplug event).</summary>
+    public void TriggerPoll() => Task.Run(() =>
+    {
+        PollOnce(force: false);
+        Thread.Sleep(1500); // devices often need a moment to enumerate as ADB
+        PollOnce(force: false);
+    });
 
     private int RunNoRedirect(string args, int timeoutMs)
     {
@@ -156,6 +198,9 @@ public class AdbService : IDisposable
             Arguments = args,
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardInput = false,
+            RedirectStandardOutput = false,
+            RedirectStandardError = false,
             WindowStyle = ProcessWindowStyle.Hidden,
             WorkingDirectory = Path.GetDirectoryName(_adbPath!) ?? "",
         };
@@ -203,7 +248,7 @@ public class AdbService : IDisposable
 
     private void PollOnce(bool force = false)
     {
-        if (!_pollGate.Wait(force ? 15_000 : 0)) return;
+        if (!_pollGate.Wait(force ? 15_000 : 3_000)) return;
         try
         {
             if (_adbPath == null || !_serverOk)

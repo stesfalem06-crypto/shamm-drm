@@ -34,14 +34,25 @@ public sealed class DeviceRow : INotifyPropertyChanged
         "unauthorized" => "Waiting for permission",
         "offline" => "Offline",
         "disconnected" => "Disconnected",
+        "needs-debugging" => "Needs USB debugging",
+        "driver-missing" => "USB driver missing",
+        "adb-interface" => "Connecting…",
+        "no permissions" => "No permission",
         _ => State,
     };
+
+    /// <summary>Row comes from Windows PnP only (adb cannot talk to it yet).</summary>
+    public bool IsPnpOnly => Serial.StartsWith("usb:", StringComparison.Ordinal);
 
     public string Hint => State switch
     {
         "unauthorized" => "Tap Allow on the phone",
         "offline" => "Reconnect the cable / unlock the phone",
         "disconnected" => "Unplugged",
+        "needs-debugging" => "Turn on USB debugging (install Xama for guided setup)",
+        "driver-missing" => "Click “Install phone drivers” below",
+        "adb-interface" => "Unlock the phone and tap Allow",
+        "no permissions" => "Unlock the phone and tap Allow",
         _ => "",
     };
 

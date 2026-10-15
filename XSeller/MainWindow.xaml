@@ -153,6 +153,14 @@
                                    Foreground="{StaticResource Accent}" Text="⟳ Refresh" ToolTip="Restart adb and rescan phones"
                                    MouseLeftButtonUp="RefreshPhones_Click"/>
                     </Grid>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBlock FontSize="11" Cursor="Hand" Foreground="{StaticResource Accent}" Margin="0,0,14,0"
+                                   Text="Install phone drivers" ToolTip="Install ADB USB drivers (asks Windows permission)"
+                                   MouseLeftButtonUp="InstallDrivers_Click"/>
+                        <TextBlock FontSize="11" Cursor="Hand" Foreground="{StaticResource Accent}"
+                                   Text="Diagnostics" ToolTip="Copy a phone-detection report to the clipboard and Documents\XSeller\diag.txt"
+                                   MouseLeftButtonUp="Diagnostics_Click"/>
+                    </StackPanel>
                     <TextBlock x:Name="AdbStatusText" DockPanel.Dock="Top" FontSize="10" TextWrapping="Wrap"
                                Foreground="{StaticResource TextMuted}" Margin="0,0,0,4" Text="adb: starting…"/>
                     <TextBlock x:Name="UsbHintText" DockPanel.Dock="Top" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"

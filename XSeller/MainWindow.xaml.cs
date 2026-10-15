@@ -76,40 +76,66 @@ public partial class MainWindow : Window
 
     private void StartUsbScan()
     {
-        _usbTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _usbTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _usbTimer.Tick += async (_, _) => await ScanUsbAsync();
         _usbTimer.Start();
         _ = ScanUsbAsync();
     }
 
+    private List<ConnectedDevice> _adbDevices = new();
+    private List<UsbPhoneDetector.PnpPhone> _pnpPhones = new();
+    private bool _driverPromptedThisSession;
+
     private async Task ScanUsbAsync()
     {
         if (_usbScanBusy) return;
-        // Only needed while adb sees no authorized phone.
-        if (_adb.LastDevices.Any(d => d.State == "device")) { UsbHintText.Visibility = Visibility.Collapsed; return; }
         _usbScanBusy = true;
         try
         {
-            var findings = await Task.Run(UsbPhoneDetector.Scan);
-            var adbSeesSomething = _adb.LastDevices.Count > 0;
-            var driver = findings.FirstOrDefault(f => f.Kind == "driver");
-            var mtp = findings.FirstOrDefault(f => f.Kind == "mtp");
-            var adbIf = findings.FirstOrDefault(f => f.Kind == "adb");
-            string? hint = null;
-            if (driver != null)
-                hint = $"Phone detected ({driver.Name}) but its USB driver is missing — install the phone maker's USB driver " +
-                       "(Samsung USB Driver / Google USB Driver), then press Refresh.";
-            else if (!adbSeesSomething && adbIf != null)
-                hint = $"Phone detected ({adbIf.Name}) — unlock it and tap Allow, then press Refresh if it does not appear.";
-            else if (!adbSeesSomething && mtp != null)
-                hint = $"Phone detected ({mtp.Name}) - turn on USB debugging (install Xama for guided setup).";
-            UsbHintText.Text = hint ?? "";
-            UsbHintText.Visibility = hint == null ? Visibility.Collapsed : Visibility.Visible;
-            if (hint != null) DevicesEmpty.Visibility = Visibility.Collapsed;
-            else if (_deviceRows.Count == 0) DevicesEmpty.Visibility = Visibility.Visible;
+            _pnpPhones = await Task.Run(UsbPhoneDetector.Scan);
+            RebuildDeviceRows();
+            var driverMissing = _pnpPhones.FirstOrDefault(p => p.State == UsbPhoneDetector.PnpPhoneState.DriverMissing);
+            if (driverMissing != null && !_driverPromptedThisSession && !DriverInstaller.Installed &&
+                !DriverInstaller.AttemptedBefore && DriverInstaller.Bundled)
+            {
+                // Plug-and-play: first time a phone lacks a driver, install ours automatically (one UAC prompt).
+                _driverPromptedThisSession = true;
+                await InstallDriversAsync($"Installing USB driver for {driverMissing.Name} — click Yes on the Windows prompt…");
+            }
         }
-        catch (Exception ex) { AdbService.Log("usb hint error: " + ex.Message); }
+        catch (Exception ex) { AdbService.Log("usb scan error: " + ex.Message); }
         finally { _usbScanBusy = false; }
+    }
+
+    private async Task InstallDriversAsync(string message)
+    {
+        StatusText.Text = message;
+        var ok = await Task.Run(DriverInstaller.InstallElevated);
+        StatusText.Text = ok ? "Phone drivers installed. Re-plug the phone if it does not appear within a few seconds."
+                             : DriverInstaller.Bundled ? "Driver install was cancelled or failed — click “Install phone drivers” to retry."
+                                                       : "Driver files are missing from this X Seller folder — reinstall X Seller.";
+        _adb.Refresh();
+    }
+
+    private async void InstallDrivers_Click(object sender, MouseButtonEventArgs e)
+    {
+        _driverPromptedThisSession = true;
+        await InstallDriversAsync("Installing phone USB drivers — click Yes on the Windows prompt…");
+    }
+
+    private async void Diagnostics_Click(object sender, MouseButtonEventArgs e)
+    {
+        StatusText.Text = "Collecting diagnostics…";
+        try
+        {
+            var text = await Task.Run(() => Diagnostics.Collect(_adb));
+            Directory.CreateDirectory(FirstRunBootstrap.DocsRoot);
+            File.WriteAllText(Diagnostics.DiagPath, text);
+            try { Clipboard.SetText(text); } catch { }
+            StatusText.Text = $"Diagnostics copied to clipboard and saved to {Diagnostics.DiagPath} — send it to support.";
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{Diagnostics.DiagPath}\"") { UseShellExecute = true }); } catch { }
+        }
+        catch (Exception ex) { StatusText.Text = "Diagnostics failed: " + ex.Message; }
     }
 
     private void RefreshPhones_Click(object sender, MouseButtonEventArgs e)
@@ -117,6 +143,37 @@ public partial class MainWindow : Window
         AdbStatusText.Text = "adb: restarting server…";
         _adb.Refresh();
         _ = ScanUsbAsync();
+    }
+
+    // WM_DEVICECHANGE: react instantly to USB plug/unplug.
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        try
+        {
+            if (System.Windows.Interop.HwndSource.FromHwnd(new System.Windows.Interop.WindowInteropHelper(this).Handle) is { } src)
+                src.AddHook(WndProc);
+        }
+        catch (Exception ex) { AdbService.Log("WndProc hook failed: " + ex.Message); }
+    }
+
+    private DateTime _lastDevChange;
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WM_DEVICECHANGE = 0x0219;
+        if (msg == WM_DEVICECHANGE && (DateTime.UtcNow - _lastDevChange).TotalMilliseconds > 300)
+        {
+            _lastDevChange = DateTime.UtcNow;
+            AdbService.Log($"WM_DEVICECHANGE 0x{wParam.ToInt64():X}");
+            _adb.TriggerPoll();
+            Dispatcher.BeginInvoke(async () =>
+            {
+                await ScanUsbAsync();
+                await Task.Delay(2000); // composite phones enumerate their interfaces in stages
+                await ScanUsbAsync();
+            });
+        }
+        return IntPtr.Zero;
     }
 
     private void TryAddRoot(string? path, bool persist)
@@ -422,22 +479,52 @@ public partial class MainWindow : Window
 
     private void OnDevices(List<ConnectedDevice> devices)
     {
-        var seen = new HashSet<string>();
-        foreach (var d in devices)
+        _adbDevices = devices;
+        RebuildDeviceRows();
+    }
+
+    /// <summary>
+    /// Merge adb devices and Windows-PnP phones into the phone panel. A plugged phone
+    /// always gets a row: adb state when adb sees it, otherwise the PnP state
+    /// (Needs USB debugging / USB driver missing / Connecting…).
+    /// </summary>
+    private void RebuildDeviceRows()
+    {
+        var wanted = new List<(string Key, string Model, string State)>();
+        foreach (var d in _adbDevices) wanted.Add((d.Serial, d.Model, d.State));
+        var adbSerials = _adbDevices.Select(d => d.Serial).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var unmatchedAdb = _adbDevices.Count(d => !_pnpPhones.Any(p => p.Serial != null &&
+                                                    string.Equals(p.Serial, d.Serial, StringComparison.OrdinalIgnoreCase)));
+        foreach (var p in _pnpPhones)
         {
-            seen.Add(d.Serial);
-            var row = _deviceRows.FirstOrDefault(r => r.Serial == d.Serial);
+            if (p.Serial != null && adbSerials.Contains(p.Serial)) continue;   // adb already shows it
+            if (p.Serial == null && unmatchedAdb > 0) { unmatchedAdb--; continue; } // probably the same phone
+            if (p.State == UsbPhoneDetector.PnpPhoneState.AdbInterface && unmatchedAdb > 0) { unmatchedAdb--; continue; }
+            var state = p.State switch
+            {
+                UsbPhoneDetector.PnpPhoneState.DriverMissing => "driver-missing",
+                UsbPhoneDetector.PnpPhoneState.AdbInterface => "adb-interface",
+                _ => "needs-debugging",
+            };
+            wanted.Add((p.Key, p.Name, state));
+        }
+
+        var seen = new HashSet<string>();
+        foreach (var (key, model, st) in wanted)
+        {
+            if (!seen.Add(key)) continue;
+            var row = _deviceRows.FirstOrDefault(r => r.Serial == key);
             if (row == null)
             {
-                row = new DeviceRow(d.Serial) { Model = d.Model, State = d.State };
+                row = new DeviceRow(key) { Model = model, State = st };
                 row.IsChecked = row.IsReady; // new ready phones are ticked by default
                 _deviceRows.Add(row);
             }
             else
             {
                 var wasReady = row.IsReady;
-                row.Model = d.Model;
-                row.State = d.State;
+                row.Model = model;
+                row.State = st;
                 if (!wasReady && row.IsReady && !row.Busy) row.IsChecked = true; // flipped to ready after Allow
             }
             if (!row.IsReady && !row.Busy) row.IsChecked = false;
@@ -452,21 +539,21 @@ public partial class MainWindow : Window
 
         DevicesEmpty.Visibility = _deviceRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         var ready = _deviceRows.Count(r => r.IsReady);
-        var unauthorized = _deviceRows.Count(r => r.State == "unauthorized");
+        var unauthorized = _deviceRows.Count(r => r.State is "unauthorized" or "adb-interface" or "no permissions");
+        var needsDebug = _deviceRows.Count(r => r.State == "needs-debugging");
+        var driver = _deviceRows.Count(r => r.State == "driver-missing");
+        UsbHintText.Visibility = Visibility.Collapsed;
+        DeviceBanner.Visibility = Visibility.Visible;
         if (unauthorized > 0)
-        {
-            DeviceBanner.Visibility = Visibility.Visible;
             DeviceBanner.Text = "Phone detected — unlock the screen and tap Allow on the USB debugging prompt. X Seller will connect automatically.";
-        }
+        else if (driver > 0)
+            DeviceBanner.Text = "Phone detected but its USB driver is missing — click “Install phone drivers” in the phone panel.";
+        else if (needsDebug > 0 && ready == 0)
+            DeviceBanner.Text = "Phone detected - turn on USB debugging (install Xama for guided setup). Settings › About phone › tap Build number 7× › Developer options › USB debugging.";
         else if (ready > 0)
-        {
-            DeviceBanner.Visibility = Visibility.Visible;
             DeviceBanner.Text = $"{ready} phone(s) ready. Select files (Enter adds to queue), tick phones, press Send.";
-        }
         else
-        {
             DeviceBanner.Visibility = Visibility.Collapsed;
-        }
     }
 
     private void RefreshDebt()
