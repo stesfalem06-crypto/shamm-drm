@@ -1,15 +1,32 @@
-<resources>
-    <style name="Theme.Xama" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">#FF9F0A</item>
-        <item name="colorPrimaryDark">#000000</item>
-        <item name="colorAccent">#FF9F0A</item>
-        <item name="android:windowBackground">#000000</item>
-        <item name="android:statusBarColor">#00000000</item>
-        <item name="android:navigationBarColor">#000000</item>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.Xama" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">@color/accent_soft</item>
+        <item name="colorOnPrimaryContainer">@color/accent_light</item>
+        <item name="colorSecondary">@color/accent_light</item>
+        <item name="colorOnSecondary">#000000</item>
+        <item name="colorSecondaryContainer">@color/surface_high</item>
+        <item name="colorOnSecondaryContainer">@color/text_primary</item>
+        <item name="colorSurface">@color/bg_panel</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="colorSurfaceContainer">@color/bg_elevated</item>
+        <item name="colorSurfaceContainerHigh">@color/surface_high</item>
+        <item name="colorOutline">@color/stroke_strong</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="colorControlActivated">@color/accent</item>
+        <item name="android:colorBackground">@color/bg_dark</item>
+        <item name="android:windowBackground">@color/bg_dark</item>
+        <item name="android:statusBarColor">@color/bg_dark</item>
+        <item name="android:navigationBarColor">@color/bg_dark</item>
         <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
         <item name="android:fontFamily">sans-serif</item>
-        <item name="android:windowTranslucentStatus">false</item>
-        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.Xama.BottomSheet</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Xama.Dialog</item>
+        <item name="android:windowAnimationStyle">@style/Xama.WindowAnimation</item>
     </style>
 
     <style name="Theme.Xama.Player" parent="Theme.Xama">
@@ -17,5 +34,36 @@
         <item name="android:windowBackground">#000000</item>
         <item name="android:statusBarColor">#000000</item>
         <item name="android:navigationBarColor">#000000</item>
+        <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="p">shortEdges</item>
+    </style>
+
+    <style name="Xama.WindowAnimation" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/slide_in_up_fade</item>
+        <item name="android:activityOpenExitAnimation">@anim/fade_out_short</item>
+        <item name="android:activityCloseEnterAnimation">@anim/fade_in_short</item>
+        <item name="android:activityCloseExitAnimation">@anim/slide_out_down_fade</item>
+    </style>
+
+    <style name="ThemeOverlay.Xama.BottomSheet" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/Widget.Xama.BottomSheet</item>
+        <item name="android:navigationBarColor">@color/bg_panel</item>
+    </style>
+
+    <style name="Widget.Xama.BottomSheet" parent="Widget.Material3.BottomSheet.Modal">
+        <item name="backgroundTint">@color/bg_panel</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.Xama.Sheet</item>
+    </style>
+
+    <style name="ShapeAppearance.Xama.Sheet" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">28dp</item>
+        <item name="cornerSizeTopRight">28dp</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+
+    <style name="ThemeOverlay.Xama.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorSurface">@color/bg_elevated</item>
+        <item name="colorPrimary">@color/accent</item>
     </style>
 </resources>

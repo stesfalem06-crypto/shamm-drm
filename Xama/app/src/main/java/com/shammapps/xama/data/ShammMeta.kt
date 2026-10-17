@@ -12,4 +12,8 @@ data class ShammMeta(
     val IvBase64: String = "",
     val IsVertical: Boolean = false,
     val WrappedContentKeyForShopsBase64: String = "",
+    /** Optional unencrypted poster: base64 JPEG, ~320x180, <= 40 KB. */
+    val PosterBase64: String? = null,
+    /** null/absent = video; "pdf" = protected PDF (same .shammvid crypto + key flow). */
+    val ContentType: String? = null,
 )

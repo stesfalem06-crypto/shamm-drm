@@ -8,7 +8,8 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ProgressBar
+import android.widget.ImageView
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -35,7 +36,11 @@ class ReelsAdapter(
         val playerView: PlayerView = itemView.findViewById(R.id.reelPlayerView)
         val titleText: TextView = itemView.findViewById(R.id.reelTitleText)
         val hintText: TextView = itemView.findViewById(R.id.reelHintText)
-        val progress: ProgressBar = itemView.findViewById(R.id.reelProgress)
+        val seek: SeekBar = itemView.findViewById(R.id.reelSeek)
+        val timePos: TextView = itemView.findViewById(R.id.reelTimePos)
+        val timeDur: TextView = itemView.findViewById(R.id.reelTimeDur)
+        val centerIcon: ImageView = itemView.findViewById(R.id.reelCenterIcon)
+        var dragging = false
         val seekHint: TextView = itemView.findViewById(R.id.reelSeekHint)
         var player: ExoPlayer? = null
         var contentKey: ByteArray? = null
@@ -46,8 +51,10 @@ class ReelsAdapter(
             val r = object : Runnable {
                 override fun run() {
                     val p = player
-                    if (p != null && p.duration > 0) {
-                        progress.progress = ((p.currentPosition * 1000) / p.duration).toInt().coerceIn(0, 1000)
+                    if (p != null && p.duration > 0 && !dragging) {
+                        seek.progress = ((p.currentPosition * 1000) / p.duration).toInt().coerceIn(0, 1000)
+                        timePos.text = Ui.formatDuration(p.currentPosition)
+                        timeDur.text = Ui.formatDuration(p.duration)
                     }
                     mainHandler.postDelayed(this, 250)
                 }
@@ -69,6 +76,18 @@ class ReelsAdapter(
         }
 
         private val hideSeek = Runnable { seekHint.visibility = View.GONE }
+
+        /** Center play/pause icon: stays while paused, flashes away on resume. */
+        fun showPlayState(playing: Boolean) {
+            centerIcon.setImageResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play)
+            centerIcon.animate().cancel()
+            centerIcon.alpha = 1f
+            centerIcon.scaleX = 0.8f
+            centerIcon.scaleY = 0.8f
+            centerIcon.animate().scaleX(1f).scaleY(1f).setDuration(150).withEndAction {
+                if (playing) centerIcon.animate().alpha(0f).setStartDelay(350).setDuration(250).start()
+            }.start()
+        }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ReelHolder {
@@ -86,7 +105,24 @@ class ReelsAdapter(
             "Double-tap sides to seek · Swipe up for next"
         else
             "Double-tap sides to seek · End of feed"
-        holder.progress.progress = 0
+        holder.seek.progress = 0
+        holder.timePos.text = "0:00"
+        holder.timeDur.text = if (video.durationMs > 0) Ui.formatDuration(video.durationMs) else "0:00"
+        holder.centerIcon.animate().cancel()
+        holder.centerIcon.alpha = 0f
+        holder.dragging = false
+        holder.seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar, value: Int, fromUser: Boolean) {
+                val dur = holder.player?.duration ?: 0L
+                if (fromUser && dur > 0) holder.timePos.text = Ui.formatDuration(dur * value / 1000)
+            }
+            override fun onStartTrackingTouch(sb: SeekBar) { holder.dragging = true }
+            override fun onStopTrackingTouch(sb: SeekBar) {
+                holder.dragging = false
+                val p = holder.player ?: return
+                if (p.duration > 0) p.seekTo(p.duration * sb.progress / 1000)
+            }
+        })
 
         val ctx = holder.itemView.context
         val exo = ExoPlayer.Builder(ctx).build()
@@ -98,6 +134,7 @@ class ReelsAdapter(
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 val p = holder.player ?: return true
                 p.playWhenReady = !p.playWhenReady
+                holder.showPlayState(p.playWhenReady)
                 return true
             }
 

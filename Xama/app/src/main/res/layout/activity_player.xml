@@ -4,55 +4,343 @@
     android:id="@+id/playerRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000"
-    android:fitsSystemWindows="false">
+    android:background="#000000">
 
+    <!-- Video surface (size is adjusted in code for 16:9 / 4:3 modes) -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        app:use_controller="true"
-        app:controller_layout_id="@layout/exo_player_control_view"
-        app:show_timeout="4000"
-        app:hide_on_touch="true"
+        android:layout_gravity="center"
+        app:use_controller="false"
         app:resize_mode="fit"
-        app:surface_type="surface_view"
-        app:animation_enabled="true"/>
+        app:shutter_background_color="#000000"
+        app:surface_type="surface_view"/>
 
-    <!-- Gesture feedback pill -->
-    <TextView
-        android:id="@+id/gestureHint"
+    <!-- Gesture surface: taps, double taps, swipes -->
+    <View
+        android:id="@+id/touchLayer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+    <!-- Double-tap seek ripples -->
+    <LinearLayout
+        android:id="@+id/seekRippleLeft"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:background="@drawable/double_tap_left"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:alpha="0"
+        android:visibility="gone">
+        <ImageView android:layout_width="34dp" android:layout_height="34dp" android:src="@drawable/ic_replay"
+            android:importantForAccessibility="no"/>
+        <TextView android:id="@+id/seekRippleLeftText" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textColor="#FFFFFF" android:textSize="14sp"
+            android:fontFamily="sans-serif-medium" android:text="10 seconds"/>
+    </LinearLayout>
+    <LinearLayout
+        android:id="@+id/seekRippleRight"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="@drawable/double_tap_right"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:alpha="0"
+        android:visibility="gone">
+        <ImageView android:layout_width="34dp" android:layout_height="34dp" android:src="@drawable/ic_forward"
+            android:importantForAccessibility="no"/>
+        <TextView android:id="@+id/seekRippleRightText" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textColor="#FFFFFF" android:textSize="14sp"
+            android:fontFamily="sans-serif-medium" android:text="10 seconds"/>
+    </LinearLayout>
+
+    <!-- Brightness / volume indicator -->
+    <LinearLayout
+        android:id="@+id/levelIndicator"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp"
-        android:paddingTop="10dp"
-        android:paddingBottom="10dp"
-        android:background="@drawable/play_circle_bg"
-        android:textColor="#FFFFFF"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:visibility="gone"/>
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/indicator_bg"
+        android:paddingStart="16dp"
+        android:paddingEnd="18dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
+        android:visibility="gone">
+        <ImageView android:id="@+id/levelIcon" android:layout_width="24dp" android:layout_height="24dp"
+            android:src="@drawable/ic_brightness" android:importantForAccessibility="no"/>
+        <ProgressBar android:id="@+id/levelBar" style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="140dp" android:layout_height="5dp" android:layout_marginStart="14dp"
+            android:max="100" android:progressDrawable="@drawable/progress_track"/>
+        <TextView android:id="@+id/levelText" android:layout_width="40dp" android:layout_height="wrap_content"
+            android:layout_marginStart="12dp" android:gravity="end" android:textColor="#FFFFFF" android:textSize="14sp"
+            android:fontFamily="sans-serif-medium"/>
+    </LinearLayout>
 
-    <!-- Locked overlay: only unlock visible -->
+    <!-- Swipe-seek / generic hint -->
+    <LinearLayout
+        android:id="@+id/seekIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/indicator_bg"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
+        android:visibility="gone">
+        <TextView android:id="@+id/seekIndicatorDelta" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="#FFFFFF" android:textSize="24sp" android:fontFamily="sans-serif-medium"/>
+        <TextView android:id="@+id/seekIndicatorPos" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginTop="2dp" android:textColor="#B3FFFFFF" android:textSize="13sp"/>
+    </LinearLayout>
+
+    <com.google.android.material.progressindicator.CircularProgressIndicator
+        android:id="@+id/bufferingSpinner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:indeterminate="true"
+        android:visibility="gone"
+        app:indicatorColor="@color/accent"
+        app:trackColor="#33FFFFFF"
+        app:indicatorSize="52dp"
+        app:trackThickness="4dp"
+        app:trackCornerRadius="2dp"/>
+
+    <!-- Controls overlay -->
+    <FrameLayout
+        android:id="@+id/controlsRoot"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#40000000"/>
+
+        <!-- Top bar -->
+        <LinearLayout
+            android:id="@+id/topBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/player_top_gradient"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="28dp">
+
+            <ImageButton android:id="@+id/btnBack" style="@style/PlayerIconButton"
+                android:src="@drawable/ic_back" android:contentDescription="Back"/>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
+                android:orientation="vertical">
+                <TextView android:id="@+id/videoTitle" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF" android:textSize="16sp" android:fontFamily="sans-serif-medium"
+                    android:maxLines="1" android:ellipsize="end"/>
+                <TextView android:id="@+id/videoSubtitle" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:textColor="#B3FFFFFF" android:textSize="12sp" android:maxLines="1" android:ellipsize="end"/>
+            </LinearLayout>
+
+            <ImageButton android:id="@+id/btnSubtitles" style="@style/PlayerIconButton"
+                android:src="@drawable/ic_subtitles" android:contentDescription="Subtitles"/>
+            <ImageButton android:id="@+id/btnAudioTrack" style="@style/PlayerIconButton"
+                android:src="@drawable/ic_headset" android:contentDescription="Audio track"/>
+            <ImageButton android:id="@+id/btnMore" style="@style/PlayerIconButton"
+                android:src="@drawable/ic_more_vert" android:contentDescription="More options"/>
+        </LinearLayout>
+
+        <!-- Center transport -->
+        <LinearLayout
+            android:id="@+id/centerControls"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <ImageButton android:id="@+id/btnPrev" style="@style/PlayerTransportButton"
+                android:src="@drawable/ic_skip_prev" android:contentDescription="Previous"/>
+            <ImageButton android:id="@+id/btnRewind" style="@style/PlayerTransportButton"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/player_glass_circle"
+                android:src="@drawable/ic_replay" android:contentDescription="Back 10 seconds"/>
+            <ImageButton android:id="@+id/btnPlayPause"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:padding="18dp"
+                android:scaleType="fitCenter"
+                android:background="@drawable/player_play_bg"
+                android:elevation="6dp"
+                android:src="@drawable/ic_pause"
+                android:contentDescription="Play or pause"/>
+            <ImageButton android:id="@+id/btnForward" style="@style/PlayerTransportButton"
+                android:layout_marginStart="10dp"
+                android:background="@drawable/player_glass_circle"
+                android:src="@drawable/ic_forward" android:contentDescription="Forward 10 seconds"/>
+            <ImageButton android:id="@+id/btnNext" style="@style/PlayerTransportButton"
+                android:src="@drawable/ic_skip_next" android:contentDescription="Next"/>
+        </LinearLayout>
+
+        <!-- Bottom bar -->
+        <LinearLayout
+            android:id="@+id/bottomBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:orientation="vertical"
+            android:background="@drawable/player_bottom_gradient"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="40dp"
+            android:paddingBottom="10dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp">
+                <TextView android:id="@+id/timePosition" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF" android:textSize="12.5sp" android:fontFamily="sans-serif-medium" android:text="0:00"/>
+                <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+                <TextView android:id="@+id/timeDuration" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="#B3FFFFFF" android:textSize="12.5sp" android:text="0:00"/>
+            </LinearLayout>
+
+            <androidx.media3.ui.DefaultTimeBar
+                android:id="@+id/timeBar"
+                android:layout_width="match_parent"
+                android:layout_height="30dp"
+                app:bar_height="4dp"
+                app:scrubber_enabled_size="14dp"
+                app:scrubber_dragged_size="20dp"
+                app:touch_target_height="30dp"
+                app:played_color="@color/accent"
+                app:scrubber_color="#FFFFFF"
+                app:buffered_color="#73FFFFFF"
+                app:unplayed_color="#33FFFFFF"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+                <ImageButton android:id="@+id/btnLock" style="@style/PlayerBottomButton"
+                    android:src="@drawable/ic_lock_open" android:contentDescription="Lock controls"/>
+                <ImageButton android:id="@+id/btnAspect" style="@style/PlayerBottomButton"
+                    android:src="@drawable/ic_aspect" android:contentDescription="Aspect ratio"/>
+                <TextView android:id="@+id/btnSpeed" android:layout_width="wrap_content" android:layout_height="34dp"
+                    android:layout_marginStart="4dp" android:gravity="center" android:minWidth="52dp"
+                    android:paddingStart="10dp" android:paddingEnd="10dp" android:background="@drawable/btn_secondary"
+                    android:textColor="#FFFFFF" android:textSize="12.5sp" android:fontFamily="sans-serif-medium"
+                    android:text="1x" android:contentDescription="Playback speed"/>
+                <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+                <ImageButton android:id="@+id/btnSleep" style="@style/PlayerBottomButton"
+                    android:src="@drawable/ic_timer" android:contentDescription="Sleep timer"/>
+                <ImageButton android:id="@+id/btnRepeat" style="@style/PlayerBottomButton"
+                    android:src="@drawable/ic_repeat" android:contentDescription="Repeat mode"/>
+                <ImageButton android:id="@+id/btnRotate" style="@style/PlayerBottomButton"
+                    android:src="@drawable/ic_rotate" android:contentDescription="Rotate screen"/>
+                <ImageButton android:id="@+id/btnPip" style="@style/PlayerBottomButton"
+                    android:src="@drawable/ic_pip" android:contentDescription="Picture in picture"/>
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- Resume chip -->
+    <LinearLayout
+        android:id="@+id/resumeChip"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="20dp"
+        android:layout_marginBottom="130dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/pill_dark"
+        android:paddingStart="16dp"
+        android:paddingEnd="6dp"
+        android:visibility="gone">
+        <TextView android:id="@+id/resumeText" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="#FFFFFF" android:textSize="13sp"/>
+        <TextView android:id="@+id/resumeStartOver" android:layout_width="wrap_content" android:layout_height="40dp"
+            android:gravity="center" android:paddingStart="12dp" android:paddingEnd="12dp"
+            android:textColor="@color/accent_light" android:textSize="13sp" android:fontFamily="sans-serif-medium"
+            android:text="Start over"/>
+    </LinearLayout>
+
+    <!-- Lock overlay -->
     <FrameLayout
         android:id="@+id/lockOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:visibility="gone"
-        android:clickable="true"
-        android:focusable="true">
-        <ImageButton
-            android:id="@+id/btn_unlock"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:layout_gravity="top|end"
-            android:layout_marginTop="36dp"
-            android:layout_marginEnd="16dp"
-            android:background="@drawable/play_circle_bg"
-            android:src="@drawable/ic_lock"
-            android:contentDescription="Unlock"
-            android:padding="12dp"/>
+        android:visibility="gone">
+        <LinearLayout
+            android:id="@+id/btnUnlock"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="48dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/pill_dark"
+            android:paddingStart="16dp"
+            android:paddingEnd="20dp"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_lock"
+                app:tint="@color/accent" android:importantForAccessibility="no"/>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="10dp"
+                android:textColor="#FFFFFF" android:textSize="14sp" android:fontFamily="sans-serif-medium"
+                android:text="Tap to unlock"/>
+        </LinearLayout>
     </FrameLayout>
+
+    <!-- Friendly error -->
+    <LinearLayout
+        android:id="@+id/errorView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="#F2000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:padding="32dp"
+        android:visibility="gone">
+        <FrameLayout android:layout_width="80dp" android:layout_height="80dp" android:background="@drawable/icon_circle_soft">
+            <ImageView android:layout_width="38dp" android:layout_height="38dp" android:layout_gravity="center"
+                android:src="@drawable/ic_error" app:tint="@color/accent" android:importantForAccessibility="no"/>
+        </FrameLayout>
+        <TextView android:id="@+id/errorTitle" style="@style/Text.Title" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:layout_marginTop="18dp" android:gravity="center"
+            android:text="Can't play this video"/>
+        <TextView android:id="@+id/errorMessage" style="@style/Text.Caption" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:layout_marginTop="8dp" android:maxWidth="420dp"
+            android:gravity="center" android:textSize="14sp" android:textColor="@color/text_secondary"/>
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginTop="24dp" android:orientation="horizontal">
+            <TextView android:id="@+id/errorBack" style="@style/PillButton.Secondary" android:text="Go back"/>
+            <TextView android:id="@+id/errorNext" style="@style/PillButton.Secondary" android:layout_marginStart="10dp"
+                android:text="Play next"/>
+            <TextView android:id="@+id/errorRetry" style="@style/PillButton.Primary" android:layout_marginStart="10dp"
+                android:text="Try again"/>
+        </LinearLayout>
+    </LinearLayout>
 </FrameLayout>

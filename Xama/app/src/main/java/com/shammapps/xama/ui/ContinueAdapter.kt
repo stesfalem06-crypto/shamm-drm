@@ -4,10 +4,12 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.shammapps.xama.R
 import com.shammapps.xama.data.LocalVideo
+import com.shammapps.xama.data.PlaybackPositions
 import com.shammapps.xama.util.ThumbLoader
 
 class ContinueAdapter(
@@ -18,6 +20,8 @@ class ContinueAdapter(
     class Holder(v: View) : RecyclerView.ViewHolder(v) {
         val image: ImageView = v.findViewById(R.id.continueImage)
         val title: TextView = v.findViewById(R.id.continueTitle)
+        val meta: TextView = v.findViewById(R.id.continueMeta)
+        val progress: ProgressBar = v.findViewById(R.id.continueProgress)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
@@ -27,8 +31,20 @@ class ContinueAdapter(
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val video = videos[position]
+        val ctx = holder.itemView.context
         holder.title.text = video.title
-        ThumbLoader.load(holder.itemView.context, video, holder.image, video.id)
+        val saved = PlaybackPositions.get(ctx, video.id)
+        val total = if (video.durationMs > 0) video.durationMs else saved?.durationMs ?: 0L
+        if (saved != null && total > 0) {
+            holder.progress.visibility = View.VISIBLE
+            holder.progress.progress = ((saved.positionMs.toFloat() / total).coerceIn(0f, 1f) * 1000).toInt()
+            val left = (total - saved.positionMs).coerceAtLeast(0)
+            holder.meta.text = "${Ui.formatDuration(left)} left"
+        } else {
+            holder.progress.visibility = View.GONE
+            holder.meta.text = if (video.isEncrypted) "Protected" else video.folderName
+        }
+        ThumbLoader.load(ctx, video, holder.image, "cw-" + video.id)
         holder.itemView.setOnClickListener { onClick(video) }
     }
 
