@@ -20,6 +20,8 @@ public partial class MainWindow : Window
     private readonly LibraryIndex _index = new();
 
     private readonly BatchSender _batch;
+    private readonly MtpService _mtp = new();
+    private List<MtpPhone> _mtpPhones = new();
     private readonly System.Collections.ObjectModel.ObservableCollection<DeviceRow> _deviceRows = new();
     private readonly List<LibraryItem> _queue = new();
     private FilterKind _filter = FilterKind.All;
@@ -35,7 +37,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _transfer = new TransferService(_adb, _ledger);
-        _batch = new BatchSender(_adb, _transfer);
+        _batch = new BatchSender(_adb, _mtp, _transfer);
         LoadShopName();
         _settlement = new SettlementExporter(_ledger, _shopName);
         ShopNameText.Text = "·  " + _shopName;
@@ -50,6 +52,8 @@ public partial class MainWindow : Window
             RefreshRootsList();
             ApplySearch(keepSelection: true);
         });
+        _index.ScanEverything = LibraryRootsStore.LoadScanEverything();
+        ScanEverythingCheck.IsChecked = _index.ScanEverything;
         _index.Start(LibraryRootsStore.LoadOrSeed());
         RefreshRootsList();
         StyleChips();
@@ -60,13 +64,32 @@ public partial class MainWindow : Window
         _adb.DevicesChanged += devices => Dispatcher.BeginInvoke(() => OnDevices(devices));
         _adb.StatusChanged += st => Dispatcher.BeginInvoke(() => AdbStatusText.Text = st);
         AdbStatusText.Text = _adb.AdbPath == null ? "adb: not found" : $"adb: {_adb.AdbPath} | starting server…";
+        // Primary: MTP (no USB debugging). Secondary: adb. The list never depends on adb.
+        _mtp.PhonesChanged += phones => Dispatcher.BeginInvoke(() =>
+        {
+            foreach (var gone in _mtpPhones.Where(o => phones.All(n => n.Id != o.Id)))
+                if (_indexedPhones.Remove(gone.Id))
+                {
+                    var label = !string.IsNullOrWhiteSpace(gone.Model) && !gone.Name.Contains(gone.Model, StringComparison.OrdinalIgnoreCase)
+                        ? $"{gone.Name} ({gone.Model})" : gone.Name;
+                    _index.RemoveExternal($"[{label}]");
+                }
+            _mtpPhones = phones;
+            RebuildDeviceRows();
+        });
+        _mtp.Start(2000);
         _adb.StartWatching(1000);
         StartUsbScan();
 
         StatusText.Text = "Loading index… type to search instantly.";
         Loaded += (_, _) => { SearchBox.Focus(); Keyboard.Focus(SearchBox); };
         SearchBox.PreviewKeyDown += SearchBox_PreviewKeyDown;
-        Closed += (_, _) => { _usbTimer?.Stop(); _adb.Dispose(); _index.Dispose(); };
+        ResultsList.SelectionChanged += (_, e) =>
+        {
+            foreach (var o in e.RemovedItems) if (o is LibraryItem r) r.IsSelected = false;
+            foreach (var o in e.AddedItems) if (o is LibraryItem a) a.IsSelected = true;
+        };
+        Closed += (_, _) => { _usbTimer?.Stop(); _mtp.Dispose(); _adb.Dispose(); _index.Dispose(); };
     }
 
     // ---------------------------------------------------------------- USB / WMI hints
@@ -95,7 +118,7 @@ public partial class MainWindow : Window
             _pnpPhones = await Task.Run(UsbPhoneDetector.Scan);
             RebuildDeviceRows();
             var driverMissing = _pnpPhones.FirstOrDefault(p => p.State == UsbPhoneDetector.PnpPhoneState.DriverMissing);
-            if (driverMissing != null && !_driverPromptedThisSession && !DriverInstaller.Installed &&
+            if (driverMissing != null && !_mtpPhones.Any(m => m.StorageReady) && !_driverPromptedThisSession && !DriverInstaller.Installed &&
                 !DriverInstaller.AttemptedBefore && DriverInstaller.Bundled)
             {
                 // Plug-and-play: first time a phone lacks a driver, install ours automatically (one UAC prompt).
@@ -128,7 +151,7 @@ public partial class MainWindow : Window
         StatusText.Text = "Collecting diagnostics…";
         try
         {
-            var text = await Task.Run(() => Diagnostics.Collect(_adb));
+            var text = await Task.Run(() => Diagnostics.Collect(_adb, _mtp));
             Directory.CreateDirectory(FirstRunBootstrap.DocsRoot);
             File.WriteAllText(Diagnostics.DiagPath, text);
             try { Clipboard.SetText(text); } catch { }
@@ -142,6 +165,7 @@ public partial class MainWindow : Window
     {
         AdbStatusText.Text = "adb: restarting server…";
         _adb.Refresh();
+        _mtp.Trigger();
         _ = ScanUsbAsync();
     }
 
@@ -165,6 +189,7 @@ public partial class MainWindow : Window
         {
             _lastDevChange = DateTime.UtcNow;
             AdbService.Log($"WM_DEVICECHANGE 0x{wParam.ToInt64():X}");
+            _mtp.Trigger();
             _adb.TriggerPoll();
             Dispatcher.BeginInvoke(async () =>
             {
@@ -174,6 +199,140 @@ public partial class MainWindow : Window
             });
         }
         return IntPtr.Zero;
+    }
+
+    // ---------------------------------------------------------------- thumbnail grid
+
+    private bool _thumbMode;
+    private int _perRow = 5;
+
+    private void ViewDetails_Click(object sender, MouseButtonEventArgs e) => SetThumbMode(false);
+    private void ViewThumbs_Click(object sender, MouseButtonEventArgs e) => SetThumbMode(true);
+
+    private void SetThumbMode(bool on)
+    {
+        _thumbMode = on;
+        var menu = ResultsList.ContextMenu ?? ThumbGrid.ContextMenu;
+        ResultsList.ContextMenu = null; ThumbGrid.ContextMenu = null;
+        if (on) ThumbGrid.ContextMenu = menu; else ResultsList.ContextMenu = menu;
+        ResultsList.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
+        ThumbGrid.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        void Paint(Border b, bool active)
+        {
+            b.Background = new SolidColorBrush(active ? Color.FromRgb(0xFF, 0x6B, 0x2C) : Color.FromRgb(0x2A, 0x2A, 0x3A));
+            if (b.Child is TextBlock tb) tb.Foreground = active ? Brushes.White : new SolidColorBrush(Color.FromRgb(0x8E, 0x8E, 0x9C));
+        }
+        Paint(ViewDetailsBtn, !on);
+        Paint(ViewThumbsBtn, on);
+        if (on) { RebuildThumbRows(); ThumbGrid.Focus(); }
+        else ResultsList.Focus();
+    }
+
+    private void RebuildThumbRows()
+    {
+        if (ResultsList.ItemsSource is not List<LibraryItem> results) { ThumbGrid.ItemsSource = null; return; }
+        var per = Math.Max(1, _perRow);
+        var rows = new List<List<LibraryItem>>((results.Count + per - 1) / per);
+        for (var i = 0; i < results.Count; i += per)
+            rows.Add(results.GetRange(i, Math.Min(per, results.Count - i)));
+        ThumbGrid.ItemsSource = rows;
+    }
+
+    private void ThumbGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var per = Math.Max(1, (int)((ThumbGrid.ActualWidth - 24) / 176));
+        if (per == _perRow) return;
+        _perRow = per;
+        if (_thumbMode) RebuildThumbRows();
+    }
+
+    private int _anchorIndex = -1;
+
+    private void Tile_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not LibraryItem item) return;
+        ThumbGrid.Focus();
+        if (e.ClickCount == 2) { OpenItems(new List<LibraryItem> { item }); e.Handled = true; return; }
+        SelectTile(item, Keyboard.Modifiers);
+        e.Handled = true;
+    }
+
+    private void Tile_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is LibraryItem item && !item.IsSelected)
+            SelectTile(item, ModifierKeys.None);
+    }
+
+    private void SelectTile(LibraryItem item, ModifierKeys mods)
+    {
+        if (ResultsList.ItemsSource is not List<LibraryItem> results) return;
+        var idx = results.IndexOf(item);
+        if ((mods & ModifierKeys.Shift) != 0 && _anchorIndex >= 0)
+        {
+            ResultsList.SelectedItems.Clear();
+            var (a, b) = (Math.Min(_anchorIndex, idx), Math.Max(_anchorIndex, idx));
+            for (var i = a; i <= b; i++) ResultsList.SelectedItems.Add(results[i]);
+            return;
+        }
+        if ((mods & ModifierKeys.Control) != 0)
+        {
+            if (item.IsSelected) ResultsList.SelectedItems.Remove(item); else ResultsList.SelectedItems.Add(item);
+        }
+        else
+        {
+            ResultsList.SelectedItems.Clear();
+            ResultsList.SelectedItems.Add(item);
+        }
+        _anchorIndex = idx;
+    }
+
+    private void ThumbGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        if (e.Key == Key.Enter && ctrl) { OpenItems(SelectedItems()); e.Handled = true; }
+        else if (e.Key == Key.Enter) { QueueSelection(); e.Handled = true; }
+        else if (e.Key == Key.A && ctrl) { ResultsList.SelectAll(); e.Handled = true; }
+        else if (e.Key == Key.C && ctrl && (Keyboard.Modifiers & ModifierKeys.Shift) != 0) { CopyPaths(); e.Handled = true; }
+        else if (e.Key == Key.Escape) { SearchBox.Focus(); SearchBox.SelectAll(); e.Handled = true; }
+    }
+
+    // ---------------------------------------------------------------- scan everything / phone index
+
+    private void ScanEverything_Click(object sender, RoutedEventArgs e)
+    {
+        var on = ScanEverythingCheck.IsChecked == true;
+        _index.ScanEverything = on;
+        if (on) foreach (var d in FixedDrives()) _index.AddRoot(d);
+        LibraryRootsStore.SaveScanEverything(on, _index.Roots);
+        RefreshRootsList();
+        StatusText.Text = on
+            ? "Scanning everything: all fixed drives, including hidden and system folders. Results appear as they are found."
+            : "Back to normal scanning (hidden/system folders and C:\\Windows skipped unless you add them).";
+        Task.Run(_index.FullRescan);
+    }
+
+    private readonly HashSet<string> _indexedPhones = new();
+
+    private async void IndexPhone_Click(object sender, RoutedEventArgs e)
+    {
+        var rows = _deviceRows.Where(r => r.IsChecked && r.MtpId != null && _mtp.IsReady(r.MtpId)).ToList();
+        if (rows.Count == 0) { StatusText.Text = "Tick a ready phone (connected in File transfer mode) to index its storage."; return; }
+        foreach (var r in rows)
+        {
+            var id = r.MtpId!;
+            var name = r.Model;
+            StatusText.Text = $"Indexing {name} storage over MTP… (large phones take a minute)";
+            try
+            {
+                var entries = await Task.Run(() => _mtp.EnumerateAll(id, 300_000, CancellationToken.None));
+                var items = entries.Select(x => LibraryIndex.MakePhoneItem(id, name, x.Path, (long)x.Size,
+                    x.Modified?.ToUniversalTime() ?? default)).ToList();
+                _index.SetExternal($"[{name}]", items);
+                _indexedPhones.Add(id);
+                StatusText.Text = $"Indexed {items.Count:N0} file(s) on {name}. Search shows them as [{name}]\\… — Open / Send copies them from the phone.";
+            }
+            catch (Exception ex) { StatusText.Text = $"Could not index {name}: {ex.Message}"; }
+        }
     }
 
     private void TryAddRoot(string? path, bool persist)
@@ -303,7 +462,9 @@ public partial class MainWindow : Window
             keep = ResultsList.SelectedItems.Cast<LibraryItem>().Select(i => i.FilePath)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        foreach (var o in ResultsList.SelectedItems) if (o is LibraryItem old) old.IsSelected = false;
         ResultsList.ItemsSource = results;
+        if (_thumbMode) RebuildThumbRows();
         if (keep != null && keep.Count <= 2000)
         {
             foreach (var it in results)
@@ -367,6 +528,18 @@ public partial class MainWindow : Window
         {
             try
             {
+                if (it.IsOnPhone)
+                {
+                    var phoneItem = it;
+                    StatusText.Text = $"Copying {it.Name} from phone…";
+                    Task.Run(() => LocalPathFor(phoneItem)).ContinueWith(t => Dispatcher.BeginInvoke(() =>
+                    {
+                        if (t.IsFaulted) { StatusText.Text = $"Could not copy from phone: {t.Exception?.GetBaseException().Message}"; return; }
+                        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(t.Result) { UseShellExecute = true }); StatusText.Text = "Opened " + phoneItem.Name; }
+                        catch (Exception ex) { StatusText.Text = $"Could not open {phoneItem.Name}: {ex.Message}"; }
+                    }));
+                    continue;
+                }
                 if (it.IsEncrypted)
                 {
                     // Protected packages are not playable on the PC; show them in Explorer instead.
@@ -381,6 +554,7 @@ public partial class MainWindow : Window
 
     private static void OpenFolder(LibraryItem it)
     {
+        if (it.IsOnPhone) return;
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{it.FilePath}\"")
         { UseShellExecute = true });
     }
@@ -488,45 +662,89 @@ public partial class MainWindow : Window
     /// always gets a row: adb state when adb sees it, otherwise the PnP state
     /// (Needs USB debugging / USB driver missing / Connecting…).
     /// </summary>
+    private sealed class Wanted
+    {
+        public string Key = "";
+        public string Model = "";
+        public string State = "";
+        public string? MtpId;
+        public string? AdbSerial;
+        public string Ledger = "";
+        public string Transport = "";
+    }
+
+    private static bool SameSerial(string? a, string? b) =>
+        !string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b) && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
     private void RebuildDeviceRows()
     {
-        var wanted = new List<(string Key, string Model, string State)>();
-        foreach (var d in _adbDevices) wanted.Add((d.Serial, d.Model, d.State));
-        var adbSerials = _adbDevices.Select(d => d.Serial).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var unmatchedAdb = _adbDevices.Count(d => !_pnpPhones.Any(p => p.Serial != null &&
-                                                    string.Equals(p.Serial, d.Serial, StringComparison.OrdinalIgnoreCase)));
+        var wanted = new List<Wanted>();
+        // 1) MTP phones (primary, no USB debugging needed).
+        foreach (var m in _mtpPhones)
+        {
+            var name = !string.IsNullOrWhiteSpace(m.Model) && !m.Name.Contains(m.Model, StringComparison.OrdinalIgnoreCase)
+                ? $"{m.Name} ({m.Model})" : m.Name;
+            wanted.Add(new Wanted
+            {
+                Key = "mtp:" + m.Id, Model = name, MtpId = m.Id,
+                State = m.StorageReady ? "device" : "locked",
+                Ledger = string.IsNullOrWhiteSpace(m.Serial) ? m.Id : m.Serial,
+                Transport = "MTP",
+            });
+        }
+        // 2) adb devices: merge into the MTP row with the same USB serial, else own row.
+        foreach (var d in _adbDevices)
+        {
+            var match = wanted.FirstOrDefault(w => w.MtpId != null &&
+                SameSerial(_mtpPhones.First(m => m.Id == w.MtpId).Serial, d.Serial));
+            if (match == null && _mtpPhones.Count == 1 && _adbDevices.Count == 1 && wanted.Count == 1)
+                match = wanted[0]; // one phone each way: same phone (serial formats can differ)
+            if (match != null)
+            {
+                match.AdbSerial = d.Serial;
+                if (d.State == "device") { match.State = "device"; match.Transport = match.Transport == "MTP" ? "MTP + ADB" : "ADB"; }
+                continue;
+            }
+            wanted.Add(new Wanted { Key = d.Serial, Model = d.Model, State = d.State, AdbSerial = d.Serial, Ledger = d.Serial, Transport = "ADB" });
+        }
+        // 3) Windows PnP phones neither MTP nor adb can talk to (charge-only, locked, driver issue).
+        // Rows that no PnP phone matches by serial; serial-less / differently formatted PnP phones pair with these.
+        var unmatched = wanted.Count(w => !_pnpPhones.Any(p => SameSerial(p.Serial, w.Ledger) || SameSerial(p.Serial, w.AdbSerial)));
         foreach (var p in _pnpPhones)
         {
-            if (p.Serial != null && adbSerials.Contains(p.Serial)) continue;   // adb already shows it
-            if (p.Serial == null && unmatchedAdb > 0) { unmatchedAdb--; continue; } // probably the same phone
-            if (p.State == UsbPhoneDetector.PnpPhoneState.AdbInterface && unmatchedAdb > 0) { unmatchedAdb--; continue; }
+            if (wanted.Any(w => SameSerial(w.Ledger, p.Serial) || SameSerial(w.AdbSerial, p.Serial))) continue;
+            if (unmatched > 0) { unmatched--; continue; }
             var state = p.State switch
             {
                 UsbPhoneDetector.PnpPhoneState.DriverMissing => "driver-missing",
                 UsbPhoneDetector.PnpPhoneState.AdbInterface => "adb-interface",
-                _ => "needs-debugging",
+                _ => "charge-only",
             };
-            wanted.Add((p.Key, p.Name, state));
+            wanted.Add(new Wanted { Key = p.Key, Model = p.Name, State = state, Ledger = p.Serial ?? p.Key, Transport = "USB" });
         }
 
         var seen = new HashSet<string>();
-        foreach (var (key, model, st) in wanted)
+        foreach (var w in wanted)
         {
-            if (!seen.Add(key)) continue;
-            var row = _deviceRows.FirstOrDefault(r => r.Serial == key);
+            if (!seen.Add(w.Key)) continue;
+            var row = _deviceRows.FirstOrDefault(r => r.Serial == w.Key);
             if (row == null)
             {
-                row = new DeviceRow(key) { Model = model, State = st };
+                row = new DeviceRow(w.Key) { Model = w.Model, State = w.State };
                 row.IsChecked = row.IsReady; // new ready phones are ticked by default
                 _deviceRows.Add(row);
             }
             else
             {
                 var wasReady = row.IsReady;
-                row.Model = model;
-                row.State = st;
-                if (!wasReady && row.IsReady && !row.Busy) row.IsChecked = true; // flipped to ready after Allow
+                row.Model = w.Model;
+                row.State = w.State;
+                if (!wasReady && row.IsReady && !row.Busy) row.IsChecked = true; // flipped to ready (unlocked / allowed)
             }
+            row.MtpId = w.MtpId;
+            row.AdbSerial = w.AdbSerial;
+            row.LedgerSerial = w.Ledger;
+            row.Transport = w.Transport;
             if (!row.IsReady && !row.Busy) row.IsChecked = false;
         }
         for (var i = _deviceRows.Count - 1; i >= 0; i--)
@@ -539,19 +757,19 @@ public partial class MainWindow : Window
 
         DevicesEmpty.Visibility = _deviceRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         var ready = _deviceRows.Count(r => r.IsReady);
+        var locked = _deviceRows.Count(r => r.State is "locked" or "charge-only" or "needs-debugging");
         var unauthorized = _deviceRows.Count(r => r.State is "unauthorized" or "adb-interface" or "no permissions");
-        var needsDebug = _deviceRows.Count(r => r.State == "needs-debugging");
         var driver = _deviceRows.Count(r => r.State == "driver-missing");
         UsbHintText.Visibility = Visibility.Collapsed;
         DeviceBanner.Visibility = Visibility.Visible;
-        if (unauthorized > 0)
-            DeviceBanner.Text = "Phone detected — unlock the screen and tap Allow on the USB debugging prompt. X Seller will connect automatically.";
-        else if (driver > 0)
-            DeviceBanner.Text = "Phone detected but its USB driver is missing — click “Install phone drivers” in the phone panel.";
-        else if (needsDebug > 0 && ready == 0)
-            DeviceBanner.Text = "Phone detected - turn on USB debugging (install Xama for guided setup). Settings › About phone › tap Build number 7× › Developer options › USB debugging.";
+        if (locked > 0)
+            DeviceBanner.Text = "Phone detected — unlock it, pull down the notification bar, tap “USB” and choose “File transfer”. Tap Allow if asked.";
         else if (ready > 0)
             DeviceBanner.Text = $"{ready} phone(s) ready. Select files (Enter adds to queue), tick phones, press Send.";
+        else if (unauthorized > 0)
+            DeviceBanner.Text = "Phone detected — unlock the screen and tap Allow. X Seller will connect automatically.";
+        else if (driver > 0)
+            DeviceBanner.Text = "Phone detected but Windows has no driver for it — click “Install phone drivers”, or switch the phone to File transfer.";
         else
             DeviceBanner.Visibility = Visibility.Collapsed;
     }
@@ -589,12 +807,13 @@ public partial class MainWindow : Window
         var rows = _deviceRows.Where(r => r.IsChecked && r.IsReady).ToList();
         if (rows.Count == 0)
         {
-            StatusText.Text = _deviceRows.Any(r => r.State == "unauthorized")
-                ? "Phone not authorized yet — unlock it and tap Allow."
-                : "Tick at least one ready phone. If none appear, enable USB debugging once and tap Allow.";
+            StatusText.Text = _deviceRows.Any(r => r.State is "locked" or "charge-only" or "unauthorized")
+                ? "Phone not ready — unlock it and choose File transfer (tap Allow if asked)."
+                : "Tick at least one ready phone. Plug the phone in, unlock it and choose File transfer.";
             return false;
         }
-        var devices = rows.Select(r => new ConnectedDevice(r.Serial, r.Model, "device")).ToList();
+        var devices = rows.Select(r => new SendTarget(r.Serial, r.Model, r.MtpId, r.AdbSerial,
+            string.IsNullOrWhiteSpace(r.LedgerSerial) ? r.Serial : r.LedgerSerial)).ToList();
         var bySerial = rows.ToDictionary(r => r.Serial);
 
         _sending = true;
@@ -608,11 +827,11 @@ public partial class MainWindow : Window
         {
             if (!bySerial.TryGetValue(p.Serial, out var row)) return;
             row.ProgressText = p.Status;
-            row.Progress = p.FileCount == 0 ? 100 : 100.0 * p.FileIndex / p.FileCount;
+            row.Progress = p.FileCount == 0 ? 100 : 100.0 * Math.Min(p.FileCount, p.FileIndex + p.FileFraction) / p.FileCount;
         });
         try
         {
-            var results = await _batch.SendAsync(items, devices, progress, CancellationToken.None);
+            var results = await _batch.SendAsync(items, devices, progress, CancellationToken.None, LocalPathFor);
             var sent = results.Sum(r => r.Sent);
             var failed = results.Sum(r => r.Failed);
             var dropped = results.Where(r => r.Disconnected).Select(r => r.Model).ToList();
@@ -633,8 +852,18 @@ public partial class MainWindow : Window
             _sending = false;
             ProgressPanel.Visibility = Visibility.Collapsed;
             SendButton.IsEnabled = true;
-            OnDevices(_adb.LastDevices.ToList());
+            RebuildDeviceRows();
         }
+    }
+
+    /// <summary>Phone-indexed rows are downloaded to a local cache before sending/opening.</summary>
+    private string LocalPathFor(LibraryItem item)
+    {
+        if (!item.IsOnPhone) return item.FilePath;
+        var local = Path.Combine(Path.GetTempPath(), "XSeller-phone", Math.Abs(item.FilePath.GetHashCode()).ToString("X"), item.Name);
+        if (!File.Exists(local) || new FileInfo(local).Length != item.SizeBytes)
+            _mtp.Download(item.MtpDeviceId!, item.MtpPath!, local);
+        return local;
     }
 
     private void CopyUsb_Click(object sender, RoutedEventArgs e)

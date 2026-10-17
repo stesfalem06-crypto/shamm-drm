@@ -8,6 +8,17 @@ public sealed class DeviceRow : INotifyPropertyChanged
 {
     public DeviceRow(string serial) { Serial = serial; }
 
+    /// <summary>WPD device id when the phone is visible over MTP.</summary>
+    public string? MtpId { get; set; }
+    /// <summary>adb serial when adb sees the phone.</summary>
+    public string? AdbSerial { get; set; }
+    /// <summary>Stable id for the ledger (USB serial when known).</summary>
+    public string LedgerSerial { get; set; } = "";
+
+    private string _transport = "";
+    /// <summary>"MTP", "MTP + ADB", "ADB" or "USB".</summary>
+    public string Transport { get => _transport; set => Set(ref _transport, value); }
+
     public string Serial { get; }
 
     private string _model = "Phone";
@@ -34,7 +45,9 @@ public sealed class DeviceRow : INotifyPropertyChanged
         "unauthorized" => "Waiting for permission",
         "offline" => "Offline",
         "disconnected" => "Disconnected",
-        "needs-debugging" => "Needs USB debugging",
+        "locked" => "Locked / no file access",
+        "charge-only" => "Charging only",
+        "needs-debugging" => "Charging only",
         "driver-missing" => "USB driver missing",
         "adb-interface" => "Connecting…",
         "no permissions" => "No permission",
@@ -49,7 +62,9 @@ public sealed class DeviceRow : INotifyPropertyChanged
         "unauthorized" => "Tap Allow on the phone",
         "offline" => "Reconnect the cable / unlock the phone",
         "disconnected" => "Unplugged",
-        "needs-debugging" => "Turn on USB debugging (install Xama for guided setup)",
+        "locked" => "Unlock phone and choose File transfer / tap Allow",
+        "charge-only" => "Unlock phone and choose File transfer / tap Allow",
+        "needs-debugging" => "Unlock phone and choose File transfer / tap Allow",
         "driver-missing" => "Click “Install phone drivers” below",
         "adb-interface" => "Unlock the phone and tap Allow",
         "no permissions" => "Unlock the phone and tap Allow",

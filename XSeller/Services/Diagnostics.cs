@@ -9,7 +9,7 @@ public static class Diagnostics
 {
     public static string DiagPath => Path.Combine(FirstRunBootstrap.DocsRoot, "diag.txt");
 
-    public static string Collect(AdbService adb)
+    public static string Collect(AdbService adb, MtpService? mtp = null)
     {
         var sb = new StringBuilder();
         void H(string t) => sb.AppendLine().AppendLine("===== " + t + " =====");
@@ -24,6 +24,9 @@ public static class Diagnostics
         sb.AppendLine($"adb resolved: {adb.AdbPath ?? "(none)"}");
         sb.AppendLine($"adb status: {adb.LastStatus}");
         sb.AppendLine($"Drivers bundled: {DriverInstaller.Bundled} ({DriverInstaller.DriversDir}) installed: {DriverInstaller.Installed}");
+
+        H("MTP / Windows Portable Devices (primary path)");
+        sb.AppendLine(mtp == null ? "(n/a)" : Try(mtp.DiagnosticsText));
 
         H("adb candidates");
         foreach (var c in AdbService.AdbCandidates().Distinct())

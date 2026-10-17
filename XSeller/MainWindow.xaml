@@ -79,6 +79,15 @@
                         Background="#2A2A3A" MouseLeftButtonUp="ChipProtected_Click">
                     <TextBlock Text="Protected" Foreground="{StaticResource TextMuted}" FontSize="12"/>
                 </Border>
+                <Border Width="1" Background="#2E2E40" Margin="6,2,12,2"/>
+                <Border x:Name="ViewDetailsBtn" Cursor="Hand" CornerRadius="16" Padding="12,6" Margin="0,0,6,0"
+                        Background="{StaticResource Accent}" MouseLeftButtonUp="ViewDetails_Click" ToolTip="Details list">
+                    <TextBlock Text="☰ Details" Foreground="White" FontSize="12"/>
+                </Border>
+                <Border x:Name="ViewThumbsBtn" Cursor="Hand" CornerRadius="16" Padding="12,6"
+                        Background="#2A2A3A" MouseLeftButtonUp="ViewThumbs_Click" ToolTip="Thumbnail grid">
+                    <TextBlock Text="▦ Thumbnails" Foreground="{StaticResource TextMuted}" FontSize="12"/>
+                </Border>
             </StackPanel>
             <StackPanel x:Name="ProgressPanel" Orientation="Vertical" Visibility="Collapsed" HorizontalAlignment="Right" Width="280">
                 <ProgressBar Height="4" IsIndeterminate="True" BorderThickness="0"
@@ -138,6 +147,71 @@
                             </GridView>
                         </ListView.View>
                     </ListView>
+                    <ListBox x:Name="ThumbGrid" Visibility="Collapsed" Background="Transparent" BorderThickness="0"
+                             VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                             VirtualizingPanel.ScrollUnit="Pixel" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             SizeChanged="ThumbGrid_SizeChanged" PreviewKeyDown="ThumbGrid_PreviewKeyDown" Focusable="True">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Focusable" Value="False"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <ContentPresenter/>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <ItemsControl ItemsSource="{Binding}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border x:Name="tile" Width="168" Height="196" Margin="4" CornerRadius="8" Padding="6"
+                                                    Background="#1E1E2A" BorderThickness="2" BorderBrush="Transparent" Cursor="Hand"
+                                                    ToolTip="{Binding FilePath}"
+                                                    MouseLeftButtonDown="Tile_MouseLeftButtonDown"
+                                                    MouseRightButtonDown="Tile_MouseRightButtonDown">
+                                                <DockPanel>
+                                                    <TextBlock x:Name="tileName" DockPanel.Dock="Bottom" Text="{Binding Name}" TextWrapping="Wrap"
+                                                               TextTrimming="CharacterEllipsis" MaxHeight="34" FontSize="12"
+                                                               Foreground="{StaticResource TextPrimary}" Margin="0,6,0,0"/>
+                                                    <TextBlock x:Name="tileMeta" DockPanel.Dock="Bottom" FontSize="10"
+                                                               Foreground="{StaticResource TextMuted}">
+                                                        <Run Text="{Binding TypeLabel, Mode=OneWay}"/>
+                                                        <Run Text=" · "/>
+                                                        <Run Text="{Binding SizeLabel, Mode=OneWay}"/>
+                                                    </TextBlock>
+                                                    <Grid Background="#12121A">
+                                                        <TextBlock Text="{Binding KindGlyph}" FontSize="44" HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+                                                        <Image Source="{Binding Thumbnail}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                    </Grid>
+                                                </DockPanel>
+                                            </Border>
+                                            <DataTemplate.Triggers>
+                                                <Trigger SourceName="tile" Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="tile" Property="Background" Value="#2A3A4D"/>
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                    <Setter TargetName="tile" Property="Background" Value="#0078D4"/>
+                                                    <Setter TargetName="tile" Property="BorderBrush" Value="#66B3FF"/>
+                                                    <Setter TargetName="tileName" Property="Foreground" Value="White"/>
+                                                    <Setter TargetName="tileMeta" Property="Foreground" Value="#E6F2FF"/>
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                     <TextBlock x:Name="LibraryEmpty" Text="No matches. Drop .shamm packages into Library or media into indexed folders (video, PDF, image, exe)."
                                Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" TextAlignment="Center"
                                VerticalAlignment="Center" Margin="40" Visibility="Collapsed"/>
@@ -175,6 +249,10 @@
                         </Grid>
                         <Button Content="Send" Style="{StaticResource PrimaryButton}"
                                 Margin="0,0,0,8" Click="Send_Click" x:Name="SendButton"/>
+                        <Button Content="Index ticked phone storage" Style="{StaticResource PrimaryButton}"
+                                Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
+                                Margin="0,0,0,8" Click="IndexPhone_Click"
+                                ToolTip="Browse/search the whole phone storage (incl. Android folder) over MTP"/>
                         <Button Content="Copy to USB / folder…" Style="{StaticResource PrimaryButton}"
                                 Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
                                 Margin="0,0,0,8" Click="CopyUsb_Click"/>
@@ -195,6 +273,9 @@
                         <Button Content="Add media folder…" Style="{StaticResource PrimaryButton}"
                                 Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
                                 Margin="0,0,0,6" Click="AddFolder_Click"/>
+                        <CheckBox x:Name="ScanEverythingCheck" Content="Scan everything (all drives, hidden + system)"
+                                  Foreground="{StaticResource TextPrimary}" FontSize="11" Margin="0,0,0,4"
+                                  Click="ScanEverything_Click"/>
                         <CheckBox x:Name="AllDrivesCheck" Content="Index all fixed drives"
                                   Foreground="{StaticResource TextPrimary}" FontSize="11" Margin="0,0,0,6"
                                   Click="AllDrives_Click"/>
@@ -215,7 +296,7 @@
                                                     <TextBlock FontSize="11" Foreground="{StaticResource TextMuted}">
                                                         <Run Text="{Binding StateLabel, Mode=OneWay}"/>
                                                         <Run Text=" · "/>
-                                                        <Run Text="{Binding Serial, Mode=OneWay}"/>
+                                                        <Run Text="{Binding Transport, Mode=OneWay}"/>
                                                     </TextBlock>
                                                 </StackPanel>
                                             </CheckBox>
@@ -256,7 +337,7 @@
                                        Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap"/>
                             <TextBlock TextWrapping="Wrap" FontSize="12" Margin="0,8,0,0"
                                        Foreground="{StaticResource TextMuted}"
-                                       Text="1. Enable Developer options (tap Build number 7×)&#10;2. Turn on USB debugging once&#10;3. Plug in and tap Allow&#10;&#10;X Seller then detects the phone automatically and optimizes the session."/>
+                                       Text="1. Plug the phone in with a data USB cable&#10;2. Unlock it&#10;3. Pull down notifications › USB › choose “File transfer”&#10;&#10;No USB debugging needed. The phone appears here automatically."/>
                         </StackPanel>
                     </Grid>
                 </DockPanel>

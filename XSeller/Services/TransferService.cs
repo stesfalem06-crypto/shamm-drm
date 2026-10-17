@@ -19,7 +19,20 @@ public class TransferService
     {
         if (device.State != "device")
             throw new InvalidOperationException("Phone is not authorized. Unlock it and tap Allow on the USB debugging prompt.");
+        SendEncryptedVia(video, shammvidPath,
+            () => _adb.GetHardwareFingerprint(device.Serial),
+            (local, remoteName) => _adb.PushToDevice(device.Serial, local, remoteName),
+            device.Serial, device.Model);
+    }
 
+    /// <summary>
+    /// Transport-independent protected send (ADB or MTP). The crypto is unchanged:
+    /// unwrap shop key → derive device key from SHA-256(androidId|abi) → wrap → push
+    /// .shammvid/.shammkey/.shammmeta → ledger entry.
+    /// </summary>
+    public void SendEncryptedVia(VideoMetadata video, string shammvidPath, Func<byte[]> fingerprintProvider,
+        Action<string, string> push, string ledgerSerial, string ledgerModel)
+    {
         var contentKey = new byte[NativeCrypto.KeyLen];
         try
         {
@@ -33,7 +46,7 @@ public class TransferService
                 contentKey, NativeCrypto.KeyLen);
             if (rc != 0) throw new InvalidOperationException("Could not unlock package for shops.");
 
-            var fingerprint = _adb.GetHardwareFingerprint(device.Serial);
+            var fingerprint = fingerprintProvider();
             var deviceKey = new byte[NativeCrypto.KeyLen];
             try
             {
@@ -57,9 +70,9 @@ public class TransferService
                 File.WriteAllText(metaFilePath, System.Text.Json.JsonSerializer.Serialize(video));
                 try
                 {
-                    _adb.PushToDevice(device.Serial, shammvidPath, $"{video.VideoId}.shammvid");
-                    _adb.PushToDevice(device.Serial, keyFilePath, $"{video.VideoId}.shammkey");
-                    _adb.PushToDevice(device.Serial, metaFilePath, $"{video.VideoId}.shammmeta");
+                    push(shammvidPath, $"{video.VideoId}.shammvid");
+                    push(keyFilePath, $"{video.VideoId}.shammkey");
+                    push(metaFilePath, $"{video.VideoId}.shammmeta");
                 }
                 finally
                 {
@@ -71,8 +84,8 @@ public class TransferService
                 {
                     VideoId = video.VideoId,
                     VideoTitle = video.Title,
-                    DeviceSerial = device.Serial,
-                    DeviceModel = device.Model,
+                    DeviceSerial = ledgerSerial,
+                    DeviceModel = ledgerModel,
                     TokenPrice = video.TokenPrice,
                     SentAtUtc = DateTime.UtcNow,
                 });

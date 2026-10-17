@@ -35,9 +35,22 @@ public sealed class LibraryIndex : IDisposable
 
     private static readonly HashSet<string> SkipDirNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "$Recycle.Bin", "System Volume Information", "node_modules", "$WinREAgent",
-        "Windows", "WinSxS", "Config.Msi",
+        "$Recycle.Bin", "System Volume Information", "$WinREAgent", "Config.Msi",
     };
+
+    /// <summary>The OS folder (C:\Windows) — skipped by default, but NOT other folders named "Windows".</summary>
+    private static readonly string WinDir = SafeWinDir();
+    private static string SafeWinDir()
+    {
+        try { return Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.Windows)).TrimEnd('\\', '/'); }
+        catch { return ""; }
+    }
+
+    /// <summary>
+    /// "Scan everything": no folder/attribute skipping at all (hidden, system, dot-folders,
+    /// C:\Windows included). Only reparse points are skipped to avoid junction loops.
+    /// </summary>
+    public bool ScanEverything { get; set; }
 
     private const int CacheMagic = 0x58534958; // "XISX"
     private const int CacheVersion = 2;
@@ -174,38 +187,80 @@ public sealed class LibraryIndex : IDisposable
         SaveCacheSafe();
     }
 
+    // ---------------------------------------------------------------- external (phone) sources
+
+    /// <summary>Replace all rows from one external source (e.g. a phone indexed over MTP).</summary>
+    public void SetExternal(string sourcePrefix, IEnumerable<LibraryItem> items)
+    {
+        RemoveExternal(sourcePrefix);
+        foreach (var it in items) _items[it.FilePath] = it;
+        MarkChanged();
+    }
+
+    public void RemoveExternal(string sourcePrefix)
+    {
+        foreach (var kv in _items)
+            if (kv.Key.StartsWith(sourcePrefix, StringComparison.OrdinalIgnoreCase)) _items.TryRemove(kv.Key, out _);
+        MarkChanged();
+    }
+
+    public static LibraryItem MakePhoneItem(string deviceId, string phoneName, string remotePath, long size, DateTime modUtc)
+    {
+        var display = $"[{phoneName}]{remotePath}";
+        return new LibraryItem
+        {
+            Id = "mtp:" + display.ToLowerInvariant(),
+            Title = Path.GetFileNameWithoutExtension(remotePath),
+            FilePath = display,
+            MtpDeviceId = deviceId,
+            MtpPath = remotePath,
+            IsEncrypted = false,
+            Kind = ClassifyPlain(remotePath),
+            SizeBytes = size,
+            ModifiedUtc = modUtc,
+            IndexedAtUtc = DateTime.UtcNow,
+            SearchBlob = (display + " phone").ToLowerInvariant(),
+        };
+    }
+
     // ---------------------------------------------------------------- scanning
 
     private readonly record struct RawEntry(string Path, long Size, DateTime ModifiedUtc);
 
-    private static EnumerationOptions ScanOptions() => new()
+    private EnumerationOptions ScanOptions(bool everything) => new()
     {
         RecurseSubdirectories = true,
         IgnoreInaccessible = true,
-        AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.System,
+        AttributesToSkip = everything ? FileAttributes.ReparsePoint : FileAttributes.ReparsePoint | FileAttributes.System,
         ReturnSpecialDirectories = false,
         BufferSize = 64 * 1024,
     };
 
-    private static bool ShouldRecurse(ref FileSystemEntry e)
+    private static bool ShouldRecurseDefault(ref FileSystemEntry e)
     {
         var name = e.FileName;
         if (name.Length > 0 && name[0] == '.') return false;
-        return !SkipDirNames.Contains(name.ToString());
+        if (SkipDirNames.Contains(name.ToString())) return false;
+        if (WinDir.Length > 0 && name.Equals("Windows", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(e.ToFullPath().TrimEnd('\\', '/'), WinDir, StringComparison.OrdinalIgnoreCase)) return false;
+        return true;
     }
 
     private void ScanInto(ConcurrentDictionary<string, LibraryItem> target, string root)
     {
         if (!Directory.Exists(root)) return;
         var metas = new List<string>();
+        // A root the user explicitly picked inside a normally-skipped area (e.g. C:\Windows\Fonts or a
+        // hidden folder) is scanned without skipping, as is everything in "Scan everything" mode.
+        var everything = ScanEverything || IsInsideSkippedArea(root);
         try
         {
             var en = new FileSystemEnumerable<RawEntry>(root,
                 (ref FileSystemEntry e) => new RawEntry(e.ToFullPath(), e.Length, e.LastWriteTimeUtc.UtcDateTime),
-                ScanOptions())
+                ScanOptions(everything))
             {
                 ShouldIncludePredicate = (ref FileSystemEntry e) => !e.IsDirectory,
-                ShouldRecursePredicate = ShouldRecurse,
+                ShouldRecursePredicate = everything ? (ref FileSystemEntry e) => true : ShouldRecurseDefault,
             };
             foreach (var raw in en)
             {
@@ -359,13 +414,36 @@ public sealed class LibraryIndex : IDisposable
             else if (!IsPackagePart(ext))
             {
                 var fi = new FileInfo(path);
-                if (fi.Exists && !IsSkippedPath(path))
+                if (fi.Exists && !IsSkippedLive(path))
                     _items[path] = MakePlain(path, fi.Length, fi.LastWriteTimeUtc);
             }
         }
         else return;
         _cacheDirty = 1;
         MarkChanged();
+    }
+
+    private static bool IsInsideSkippedArea(string root)
+    {
+        var r = root.TrimEnd('\\', '/');
+        if (WinDir.Length > 0 && (r.Equals(WinDir, StringComparison.OrdinalIgnoreCase) ||
+                                  r.StartsWith(WinDir + "\\", StringComparison.OrdinalIgnoreCase))) return true;
+        try
+        {
+            var attr = File.GetAttributes(root);
+            if ((attr & (FileAttributes.Hidden | FileAttributes.System)) != 0) return true;
+        }
+        catch { }
+        return IsSkippedPath(Path.Combine(root, "x"));
+    }
+
+    private bool IsSkippedLive(string path)
+    {
+        if (ScanEverything) return false;
+        foreach (var r in Roots)
+            if (path.StartsWith(WithSep(r), StringComparison.OrdinalIgnoreCase) && IsInsideSkippedArea(r)) return false;
+        if (WinDir.Length > 0 && path.StartsWith(WinDir + "\\", StringComparison.OrdinalIgnoreCase)) return true;
+        return IsSkippedPath(path);
     }
 
     private static bool IsSkippedPath(string path)
@@ -563,7 +641,7 @@ public sealed class LibraryIndex : IDisposable
             {
                 if (Interlocked.Exchange(ref _cacheDirty, 0) == 0) return;
                 Directory.CreateDirectory(FirstRunBootstrap.DocsRoot);
-                var items = _items.Values.Where(i => !i.IsEncrypted).ToArray();
+                var items = _items.Values.Where(i => !i.IsEncrypted && !i.IsOnPhone).ToArray();
                 var tmp = CachePath + ".tmp";
                 using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
                 using (var bw = new BinaryWriter(fs, System.Text.Encoding.UTF8))
