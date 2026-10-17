@@ -89,6 +89,28 @@
             android:src="@drawable/ic_more_vert" android:contentDescription="More"/>
     </LinearLayout>
 
+    <!-- All / Folders switch (Reels + Music) -->
+    <LinearLayout
+        android:id="@+id/modeBar"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:visibility="gone">
+        <TextView android:id="@+id/modeAll" style="@style/CategoryChip" android:text="All"/>
+        <TextView android:id="@+id/modeFolders" style="@style/CategoryChip" android:text="Folders"/>
+        <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+        <TextView
+            android:id="@+id/modePlay"
+            style="@style/PillButton.Primary"
+            android:layout_height="36dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:text="▶  Play feed"/>
+    </LinearLayout>
+
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"

@@ -71,7 +71,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREFS = "xama_ui"
     }
 
-    private enum class Tab { VIDEOS, MUSIC, PROTECTED, PROFILE }
+    private enum class Tab { VIDEOS, REELS, MUSIC, PROTECTED, PROFILE }
     private enum class Sort(val label: String) { NAME("Name"), DATE("Date"), SIZE("Size"), LENGTH("Length") }
 
     private lateinit var repository: VideoRepository
@@ -83,6 +83,11 @@ class MainActivity : AppCompatActivity() {
     private var query = ""
     private var searchOpen = false
     private var openFolder: VideoFolder? = null
+    /** Drilled-in music folder (Music > Folders). */
+    private var openMusicFolder: VideoFolder? = null
+    private var musicFolders: List<VideoFolder> = emptyList()
+    private var reelsByFolder = false
+    private var musicByFolder = false
     private var pendingFolderName: String? = null
     private var gridMode = false
     private var sort = Sort.DATE
@@ -128,6 +133,8 @@ class MainActivity : AppCompatActivity() {
         gridMode = prefs.getBoolean("grid_mode", false)
         sort = Sort.values().getOrElse(prefs.getInt("sort", Sort.DATE.ordinal)) { Sort.DATE }
         sortDescending = prefs.getBoolean("sort_desc", true)
+        reelsByFolder = prefs.getBoolean("reels_by_folder", false)
+        musicByFolder = prefs.getBoolean("music_by_folder", false)
 
         savedInstanceState?.let { s ->
             tab = Tab.values().getOrElse(s.getInt(STATE_TAB, 0)) { Tab.VIDEOS }
@@ -140,6 +147,10 @@ class MainActivity : AppCompatActivity() {
             override fun handleOnBackPressed() {
                 when {
                     searchOpen -> closeSearch()
+                    openMusicFolder != null -> {
+                        openMusicFolder = null
+                        render(animate = true)
+                    }
                     openFolder != null -> {
                         openFolder = null
                         render(animate = true)
@@ -175,7 +186,11 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnBackFolder).setOnClickListener { onBackPressedDispatcher.onBackPressed() }
 
         findViewById<View>(R.id.navVideos).setOnClickListener { switchTab(Tab.VIDEOS) }
-        findViewById<View>(R.id.navReels).setOnClickListener { openReels(null) }
+        findViewById<View>(R.id.navReels).setOnClickListener { switchTab(Tab.REELS) }
+        findViewById<View>(R.id.modeAll).setOnClickListener { setByFolder(false) }
+        findViewById<View>(R.id.modeFolders).setOnClickListener { setByFolder(true) }
+        findViewById<View>(R.id.modePlay).setOnClickListener { openReels(reelsFeed(videos), null) }
+        findViewById<View>(R.id.rowScanAll).setOnClickListener { toggleScanAll() }
         findViewById<View>(R.id.navMusic).setOnClickListener { switchTab(Tab.MUSIC) }
         findViewById<View>(R.id.navProtected).setOnClickListener { switchTab(Tab.PROTECTED) }
         findViewById<View>(R.id.navProfile).setOnClickListener { switchTab(Tab.PROFILE) }
@@ -229,6 +244,7 @@ class MainActivity : AppCompatActivity() {
             if (OnboardingActivity.isDone(this)) startScan()
             return
         }
+        if (tab == Tab.PROFILE) bindScanAll()
         if (hasLoadedOnce && System.currentTimeMillis() - LibraryCache.lastScanMs > 1500) {
             reloadAsync(force = false)
         } else if (hasLoadedOnce) {
@@ -287,6 +303,7 @@ class MainActivity : AppCompatActivity() {
         loading = true
         if (allItems.isEmpty()) render()
         loadExecutor.execute {
+            try { com.shammapps.xama.storage.XamaStorage.writeDeviceIdentity(applicationContext) } catch (_: Exception) {}
             val items = try { repository.loadAll() } catch (_: Exception) { emptyList() }
             runOnUiThread {
                 loading = false
@@ -310,6 +327,10 @@ class MainActivity : AppCompatActivity() {
         videos = items.filter { !it.isAudio }
         audio = items.filter { it.isAudio }
         folders = try { repository.loadFolders(videos) } catch (_: Exception) { emptyList() }
+        musicFolders = audio.groupBy { it.folderName.ifBlank { "Other" } }
+            .map { (name, list) -> VideoFolder(name, list.size, list) }
+            .sortedBy { it.name.lowercase() }
+        openMusicFolder = openMusicFolder?.let { f -> musicFolders.find { it.name == f.name } }
         openFolder = openFolder?.let { f -> folders.find { it.name == f.name } }
         pendingFolderName?.let { name ->
             openFolder = folders.find { it.name == name }
@@ -351,14 +372,14 @@ class MainActivity : AppCompatActivity() {
             visibility = if (inList) View.VISIBLE else View.GONE
             setImageResource(if (searchOpen) R.drawable.ic_close else R.drawable.ic_search)
         }
-        val videoScreen = tab == Tab.VIDEOS || tab == Tab.PROTECTED
+        val videoScreen = tab == Tab.VIDEOS || tab == Tab.PROTECTED || tab == Tab.REELS
         findViewById<ImageButton>(R.id.btnViewMode).apply {
             visibility = if (videoScreen && !searchOpen) View.VISIBLE else View.GONE
             setImageResource(if (gridMode) R.drawable.ic_list else R.drawable.ic_grid)
         }
         findViewById<View>(R.id.btnSort).visibility = if (inList && !searchOpen) View.VISIBLE else View.GONE
         findViewById<View>(R.id.btnBackFolder).visibility =
-            if (openFolder != null && !searchOpen) View.VISIBLE else View.GONE
+            if ((openFolder != null || openMusicFolder != null) && !searchOpen) View.VISIBLE else View.GONE
         findViewById<EditText>(R.id.searchInput).hint = when {
             tab == Tab.MUSIC -> "Search music"
             openFolder != null -> "Search in ${openFolder?.name}"
@@ -367,13 +388,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun switchTab(t: Tab) {
-        if (t == tab && openFolder == null) {
+        if (t == tab && openFolder == null && openMusicFolder == null) {
             findViewById<RecyclerView>(R.id.contentList).smoothScrollToPosition(0)
             return
         }
         if (searchOpen) closeSearch()
         tab = t
         openFolder = null
+        openMusicFolder = null
         updateNav()
         render(animate = true)
     }
@@ -387,7 +409,7 @@ class MainActivity : AppCompatActivity() {
             findViewById<ImageView>(icon).setColorFilter(color)
             findViewById<TextView>(label).setTextColor(color)
         }
-        paint(R.id.navReelsIcon, R.id.navReelsLabel, false)
+        paint(R.id.navReelsIcon, R.id.navReelsLabel, tab == Tab.REELS)
         paint(R.id.navVideosIcon, R.id.navVideosLabel, tab == Tab.VIDEOS)
         paint(R.id.navMusicIcon, R.id.navMusicLabel, tab == Tab.MUSIC)
         paint(R.id.navProtectedIcon, R.id.navProtectedLabel, tab == Tab.PROTECTED)
@@ -469,6 +491,7 @@ class MainActivity : AppCompatActivity() {
         val sub = findViewById<TextView>(R.id.videoCountText)
 
         updateToolbar()
+        updateModeBar()
         list.visibility = View.GONE
         profile.visibility = View.GONE
         empty.visibility = View.GONE
@@ -517,18 +540,53 @@ class MainActivity : AppCompatActivity() {
                 header.text = "Protected"
                 showVideos(list, sortVideos(videos.filter { it.isEncrypted && matches(it) }), watched, animate)
             }
-            Tab.MUSIC -> {
-                header.text = "Music"
-                val tracks = sortVideos(audio.filter { matches(it) })
-                if (tracks.isEmpty()) {
-                    showEmpty(emptyFor(Tab.MUSIC))
-                } else {
-                    list.visibility = View.VISIBLE
-                    list.layoutManager = LinearLayoutManager(this)
-                    list.adapter = AudioAdapter(tracks, controller?.currentMediaItem?.mediaId) { index, shuffle ->
-                        AudioPlayerActivity.start(this, tracks, index, shuffle)
+            Tab.REELS -> {
+                header.text = "Reels"
+                if (reelsByFolder && query.isEmpty()) {
+                    val fl = sortFolders(folders)
+                    if (fl.isEmpty()) showEmpty(emptyFor(Tab.VIDEOS)) else {
+                        list.visibility = View.VISIBLE
+                        list.layoutManager = if (gridMode) GridLayoutManager(this, gridSpan()) else LinearLayoutManager(this)
+                        // Tapping a folder plays that folder as a swipe feed.
+                        list.adapter = MxFolderAdapter(fl, gridMode, watched) { f -> openReels(reelsFeed(f.videos), null) }
+                        if (animate) animateList(list)
                     }
-                    if (animate) animateList(list)
+                } else {
+                    val feed = reelsFeed(videos.filter { matches(it) })
+                    if (feed.isEmpty()) showEmpty(emptyFor(Tab.VIDEOS)) else {
+                        list.visibility = View.VISIBLE
+                        list.layoutManager = if (gridMode) GridLayoutManager(this, gridSpan()) else LinearLayoutManager(this)
+                        list.adapter = MxVideoAdapter(feed, gridMode, watched) { v -> openReels(feed, v) }
+                        if (animate) animateList(list)
+                    }
+                }
+            }
+            Tab.MUSIC -> {
+                val mf = openMusicFolder
+                header.text = mf?.name ?: "Music"
+                if (mf == null && musicByFolder && query.isEmpty()) {
+                    if (musicFolders.isEmpty()) showEmpty(emptyFor(Tab.MUSIC)) else {
+                        list.visibility = View.VISIBLE
+                        list.layoutManager = LinearLayoutManager(this)
+                        list.adapter = MxFolderAdapter(sortFolders(musicFolders), false, emptySet(), countLabel = "tracks") { f ->
+                            openMusicFolder = f
+                            render(animate = true)
+                        }
+                        if (animate) animateList(list)
+                    }
+                } else {
+                    val source = mf?.videos ?: audio
+                    val tracks = sortVideos(source.filter { matches(it) })
+                    if (tracks.isEmpty()) {
+                        showEmpty(emptyFor(Tab.MUSIC))
+                    } else {
+                        list.visibility = View.VISIBLE
+                        list.layoutManager = LinearLayoutManager(this)
+                        list.adapter = AudioAdapter(tracks, controller?.currentMediaItem?.mediaId) { index, shuffle ->
+                            AudioPlayerActivity.start(this, tracks, index, shuffle)
+                        }
+                        if (animate) animateList(list)
+                    }
                 }
             }
             Tab.PROFILE -> {
@@ -538,6 +596,7 @@ class MainActivity : AppCompatActivity() {
                 findViewById<TextView>(R.id.statMusic).text = audio.size.toString()
                 findViewById<TextView>(R.id.statProtected).text = videos.count { it.isEncrypted }.toString()
                 findViewById<TextView>(R.id.statFolders).text = folders.size.toString()
+                bindScanAll()
                 if (animate) profile.startAnimation(AnimationUtils.loadAnimation(this, R.anim.item_fade_up))
             }
         }
@@ -619,13 +678,14 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.emptyState).visibility = View.VISIBLE
     }
 
-    /**
-     * TikTok-style vertical feed. Uses portrait videos first; if there are none,
-     * falls back to all videos so the feed is never empty.
-     */
-    private fun openReels(start: LocalVideo?) {
-        val vertical = videos.filter { it.isVertical }
-        val feed = (if (vertical.isNotEmpty()) vertical + videos.filter { !it.isVertical } else videos).take(200)
+    /** Feed order: portrait videos first, then the rest. */
+    private fun reelsFeed(source: List<LocalVideo>): List<LocalVideo> {
+        val v = source.filter { !it.isAudio }
+        return (v.filter { it.isVertical } + v.filter { !it.isVertical }).take(300)
+    }
+
+    /** TikTok-style vertical swipe feed over [feed], starting at [start]. */
+    private fun openReels(feed: List<LocalVideo>, start: LocalVideo?) {
         if (feed.isEmpty()) {
             Toast.makeText(this, if (loading) "Still scanning…" else "No videos found for Reels", Toast.LENGTH_SHORT).show()
             return
@@ -635,6 +695,83 @@ class MainActivity : AppCompatActivity() {
             putExtra(EXTRA_START_INDEX, startIndex)
             putStringArrayListExtra("video_ids", ArrayList(feed.map { it.id }))
         })
+    }
+
+    private fun updateModeBar() {
+        val bar = findViewById<View>(R.id.modeBar)
+        val show = (tab == Tab.REELS || (tab == Tab.MUSIC && openMusicFolder == null)) && !searchOpen
+        bar.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show) return
+        val byFolder = if (tab == Tab.REELS) reelsByFolder else musicByFolder
+        fun style(id: Int, selected: Boolean) {
+            val v = findViewById<TextView>(id)
+            v.setBackgroundResource(if (selected) R.drawable.chip_selected else R.drawable.chip_unselected)
+            v.setTextColor(if (selected) 0xFFFFFFFF.toInt() else ContextCompat.getColor(this, R.color.text_secondary))
+        }
+        style(R.id.modeAll, !byFolder)
+        style(R.id.modeFolders, byFolder)
+        findViewById<View>(R.id.modePlay).visibility = if (tab == Tab.REELS && !byFolder) View.VISIBLE else View.GONE
+    }
+
+    private fun setByFolder(value: Boolean) {
+        if (tab == Tab.REELS) {
+            reelsByFolder = value
+            prefs.edit().putBoolean("reels_by_folder", value).apply()
+        } else {
+            musicByFolder = value
+            openMusicFolder = null
+            prefs.edit().putBoolean("music_by_folder", value).apply()
+        }
+        render(animate = true)
+    }
+
+    // ---------------------------------------------------------------- scan all folders
+
+    private fun bindScanAll() {
+        val on = com.shammapps.xama.storage.XamaStorage.scanAllEnabled(this)
+        val access = com.shammapps.xama.storage.XamaStorage.canWalkStorage(this)
+        findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.scanAllSwitch).isChecked = on && access
+        findViewById<TextView>(R.id.scanAllValue).text = when {
+            on && access -> "On · includes hidden folders and Android/media"
+            on -> "Needs “All files access” – tap to allow"
+            else -> "Off · only media folders"
+        }
+    }
+
+    private fun toggleScanAll() {
+        val store = com.shammapps.xama.storage.XamaStorage
+        val on = store.scanAllEnabled(this)
+        if (on && store.canWalkStorage(this)) {
+            store.setScanAll(this, false)
+            bindScanAll()
+            reloadAsync(force = true)
+            return
+        }
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("Scan all folders")
+            .setMessage(
+                "Xama will also look through every folder on this phone, including hidden folders " +
+                    "and Android/media, for videos and music.\n\n" +
+                    "This needs “All files access”. Note: on Android 11 and newer, Android/data " +
+                    "is blocked for all apps and can't be scanned."
+            )
+            .setPositiveButton("Allow & scan") { _, _ ->
+                store.setScanAll(this, true)
+                if (store.canWalkStorage(this)) {
+                    bindScanAll()
+                    rescan()
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
+                    } catch (_: Exception) {
+                        try { startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } catch (_: Exception) {}
+                    }
+                } else {
+                    ensurePermission()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun openVideo(video: LocalVideo, context: List<LocalVideo>) {

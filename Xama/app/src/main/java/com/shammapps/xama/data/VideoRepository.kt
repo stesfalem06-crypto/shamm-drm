@@ -21,10 +21,14 @@ class VideoRepository(private val context: Context) {
      * duplicates are collapsed by file name + size (or by resolved path).
      */
     fun loadAll(): List<LocalVideo> {
+        try { com.shammapps.xama.storage.XamaStorage.importMediaIncoming(context) } catch (_: Exception) {}
         val protected = loadIncoming()
         val device = loadDeviceVideos()
-        val appPlain = loadAppPlain()
+        val appPlain = loadAppPlain() + loadXamaPublicFolders()
         val audio = loadDeviceAudio()
+        val walked = if (com.shammapps.xama.storage.XamaStorage.scanAllEnabled(context) &&
+            com.shammapps.xama.storage.XamaStorage.canWalkStorage(context)
+        ) walkStorage() else emptyList()
         val seen = HashSet<String>()
         val fileKeys = HashSet<String>()
         val out = ArrayList<LocalVideo>(protected.size + device.size + appPlain.size + audio.size)
@@ -51,6 +55,7 @@ class VideoRepository(private val context: Context) {
         addAll(device)
         addAll(audio)
         addAll(appPlain)
+        addAll(walked)
         return out
     }
 
@@ -140,6 +145,63 @@ class VideoRepository(private val context: Context) {
                 dateAddedSec = f.lastModified() / 1000,
             )
         }
+    }
+
+    private fun fileItem(f: File, folder: String): LocalVideo {
+        val isAudio = f.extension.lowercase() in AUDIO_EXTS
+        return LocalVideo(
+            id = "file-" + f.absolutePath.hashCode().toString(16) + "-" + f.length(),
+            title = f.nameWithoutExtension,
+            filePath = f.absolutePath,
+            isEncrypted = false,
+            folderName = folder,
+            isAudio = isAudio,
+            sizeBytes = f.length(),
+            displayName = f.name,
+            dateAddedSec = f.lastModified() / 1000,
+        )
+    }
+
+    private fun isMedia(f: File): Boolean {
+        val ext = f.extension.lowercase()
+        return f.isFile && (ext in VIDEO_EXTS || ext in AUDIO_EXTS) && f.length() > 0
+    }
+
+    /** Plain files the shop PC copies over MTP into Movies/Xama, Music/Xama, Download/Xama. */
+    fun loadXamaPublicFolders(): List<LocalVideo> {
+        val out = ArrayList<LocalVideo>()
+        for (dir in com.shammapps.xama.storage.XamaStorage.plainDirs()) {
+            dir.listFiles()?.filter { isMedia(it) }?.forEach { out.add(fileItem(it, "Xama")) }
+        }
+        return out
+    }
+
+    /**
+     * "Scan all folders": walks shared storage including hidden folders and
+     * Android/media. Android/data is included where readable (Android 10 and
+     * older; Android 11+ blocks it even with All files access).
+     */
+    fun walkStorage(maxFiles: Int = 4000, maxDepth: Int = 14): List<LocalVideo> {
+        val out = ArrayList<LocalVideo>()
+        val root = com.shammapps.xama.storage.XamaStorage.root()
+        val stack = ArrayDeque<Pair<File, Int>>()
+        stack.addLast(root to 0)
+        val visited = HashSet<String>()
+        while (stack.isNotEmpty() && out.size < maxFiles) {
+            val (dir, depth) = stack.removeLast()
+            val canon = try { dir.canonicalPath } catch (_: Exception) { dir.absolutePath }
+            if (!visited.add(canon)) continue
+            val children = try { dir.listFiles() } catch (_: Exception) { null } ?: continue
+            for (c in children) {
+                if (c.isDirectory) {
+                    if (depth < maxDepth) stack.addLast(c to depth + 1)
+                } else if (isMedia(c)) {
+                    out.add(fileItem(c, dir.name.ifBlank { "Other" }))
+                    if (out.size >= maxFiles) break
+                }
+            }
+        }
+        return out
     }
 
     /** MediaStore scan — capped so huge libraries don't freeze the UI thread. */

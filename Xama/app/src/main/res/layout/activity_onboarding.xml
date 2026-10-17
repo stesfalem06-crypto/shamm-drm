@@ -56,71 +56,108 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:text="Get videos from the shop in one tap"/>
+                android:text="Get videos from the shop"/>
             <TextView
                 style="@style/Text.Caption"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:textSize="14sp"
-                android:text="Do this once. Afterwards, when you plug this phone into the shop computer, just tap “Allow” on the phone and the shop can send videos to Xama."/>
+                android:text="Tap “Set up now” once and allow everything Xama asks for. Then, at the shop:"/>
 
-            <TextView style="@style/Text.Section" android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="24dp" android:text="1. Turn on Developer options"/>
-            <TextView style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="Open Settings › About phone (on some phones: About phone › Software information) and tap “Build number” 7 times. Enter your PIN if asked. You will see “You are now a developer”."/>
             <TextView
-                android:id="@+id/onbOpenAbout"
-                style="@style/PillButton.Secondary"
-                android:layout_marginTop="12dp"
-                android:text="Open About phone"/>
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/card_bg"
+                android:padding="18dp"
+                android:gravity="center"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
+                android:fontFamily="sans-serif-medium"
+                android:text="Plug into the shop PC, choose File transfer, tap Allow"/>
 
-            <TextView style="@style/Text.Section" android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="24dp" android:text="2. Turn on USB debugging"/>
-            <TextView style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="Open Developer options (Settings › System › Developer options) and switch on “USB debugging”. Confirm with OK."/>
             <TextView
-                android:id="@+id/onbOpenDev"
+                android:id="@+id/onbSetup"
                 style="@style/PillButton.Primary"
-                android:layout_marginTop="12dp"
-                android:text="Open Developer options"/>
-
-            <TextView style="@style/Text.Section" android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="24dp" android:text="3. At the shop"/>
-            <TextView style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="Plug the phone into the shop computer with a USB cable. When “Allow USB debugging?” appears, tick “Always allow from this computer” and tap Allow."/>
+                android:layout_width="match_parent"
+                android:layout_marginTop="20dp"
+                android:text="Set up now"/>
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
+                android:layout_marginTop="20dp"
                 android:orientation="vertical"
                 android:background="@drawable/card_bg"
                 android:padding="16dp">
-                <TextView android:id="@+id/onbStatusDev" android:layout_width="match_parent" android:layout_height="wrap_content"
+                <TextView android:id="@+id/onbStatusMedia" android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:textSize="15sp"/>
-                <TextView android:id="@+id/onbStatusAdb" android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp" android:textSize="15sp"/>
+                <LinearLayout android:id="@+id/onbAllFilesRow" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp" android:background="?attr/selectableItemBackground">
+                    <TextView android:id="@+id/onbStatusAllFiles" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:textSize="15sp"/>
+                </LinearLayout>
+                <TextView android:id="@+id/onbStatusNotif" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp" android:textSize="15sp"/>
+                <TextView android:id="@+id/onbStatusId" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp" android:textSize="15sp"/>
                 <TextView android:id="@+id/onbReady" style="@style/Text.Caption" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:layout_marginTop="8dp" android:visibility="gone"
-                    android:text="All set. Plug in at the shop and tap Allow."/>
+                    android:layout_height="wrap_content" android:layout_marginTop="10dp" android:visibility="gone"
+                    android:text="All set. At the shop: plug in, choose File transfer, tap Allow."/>
             </LinearLayout>
 
             <TextView
                 style="@style/Text.Caption"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="If the phone shows “Charging this device via USB”, pull down the notification, tap it and pick “File transfer” (sometimes called MTP or Transfer files)."/>
+
+            <TextView
+                android:id="@+id/onbAdvancedToggle"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
                 android:layout_marginTop="16dp"
-                android:text="You can open this guide again any time from Me › Connect to shop PC. You can turn USB debugging off again after the transfer."/>
+                android:gravity="center_vertical"
+                android:background="?attr/selectableItemBackground"
+                android:textColor="@color/accent_light"
+                android:textSize="14sp"
+                android:text="Advanced: USB debugging (optional)"/>
+
+            <LinearLayout
+                android:id="@+id/onbAdvanced"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+                <TextView style="@style/Text.Caption" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="Not needed for normal use. Only if the shop asks for it."/>
+                <TextView style="@style/Text.Section" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp" android:text="1. Turn on Developer options"/>
+                <TextView style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Settings › About phone › tap “Build number” 7 times."/>
+                <TextView android:id="@+id/onbOpenAbout" style="@style/PillButton.Secondary"
+                    android:layout_marginTop="10dp" android:text="Open About phone"/>
+                <TextView style="@style/Text.Section" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp" android:text="2. Turn on USB debugging"/>
+                <TextView style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Developer options › switch on “USB debugging”. When plugged in, tap Allow."/>
+                <TextView android:id="@+id/onbOpenDev" style="@style/PillButton.Secondary"
+                    android:layout_marginTop="10dp" android:text="Open Developer options"/>
+                <TextView android:id="@+id/onbStatusDev" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp" android:textSize="14sp"/>
+                <TextView android:id="@+id/onbStatusAdb" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp" android:textSize="14sp"/>
+            </LinearLayout>
         </LinearLayout>
     </ScrollView>
 
     <TextView
         android:id="@+id/onbDone"
-        style="@style/PillButton.Primary"
+        style="@style/PillButton.Secondary"
         android:layout_width="match_parent"
         android:layout_margin="16dp"
         android:text="Finish later"/>

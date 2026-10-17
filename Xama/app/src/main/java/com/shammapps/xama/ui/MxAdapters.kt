@@ -54,6 +54,7 @@ class MxFolderAdapter(
     private val folders: List<VideoFolder>,
     private val grid: Boolean,
     private val watched: Set<String>,
+    private val countLabel: String = "videos",
     private val onClick: (VideoFolder) -> Unit,
 ) : RecyclerView.Adapter<MxFolderAdapter.Holder>() {
 
@@ -73,8 +74,14 @@ class MxFolderAdapter(
         val f = folders[position]
         val ctx = holder.itemView.context
         holder.name.text = f.name
-        holder.count.text = if (f.videoCount == 1) "1 video" else "${f.videoCount} videos"
-        holder.icon.setImageResource(if (f.name == "Protected") R.drawable.ic_shield else R.drawable.ic_folder)
+        holder.count.text = if (f.videoCount == 1) "1 ${countLabel.removeSuffix("s")}" else "${f.videoCount} $countLabel"
+        holder.icon.setImageResource(
+            when {
+                f.name == "Protected" -> R.drawable.ic_shield
+                countLabel == "tracks" -> R.drawable.ic_music
+                else -> R.drawable.ic_folder
+            }
+        )
         val newCount = f.videos.count { MxFormat.isNew(ctx, it, watched) }
         holder.badge.visibility = if (newCount > 0) View.VISIBLE else View.GONE
         holder.badge.text = if (grid || newCount <= 1) "NEW" else "$newCount NEW"
