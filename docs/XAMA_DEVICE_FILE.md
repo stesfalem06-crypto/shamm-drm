@@ -23,38 +23,21 @@ X Seller reads these paths in this order and uses the first valid file:
 
 After writing, call `MediaScannerConnection.scanFile(...)` on the file. Without that, Windows MTP may not show a new file until the phone is replugged.
 
-## Format: UTF-8 JSON, no BOM
+## Format (Xama 0.4.0, implemented): UTF-8 JSON
 
 ```json
-{
-  "schema": 1,
-  "app": "com.shammapps.xama",
-  "androidId": "9774d56d682e549c",
-  "abi": "arm64-v8a",
-  "fingerprintSha256": "3F1A...64 HEX CHARS...",
-  "model": "SM-A515F",
-  "manufacturer": "samsung",
-  "appVersion": "0.2.0",
-  "writtenAtUtc": "2026-10-17T18:00:00Z"
-}
+{ "version": 1, "deviceId": "<64 hex chars>", "model": "SM-A515F", "manufacturer": "samsung", "app": "xama", "appVersion": "0.4.0" }
 ```
 
-| field | required | value |
-|---|---|---|
-| schema | yes | `1` |
-| app | yes | `com.shammapps.xama` |
-| androidId | yes | `DeviceFingerprint.normalize(Settings.Secure.ANDROID_ID)` |
-| abi | yes | `DeviceFingerprint.normalize(Build.SUPPORTED_ABIS.firstOrNull())` |
-| fingerprintSha256 | recommended | uppercase or lowercase hex of `DeviceFingerprint.compute(context)`, i.e. SHA-256(UTF-8 of `androidId + "|" + abi`) |
-| model, manufacturer, appVersion, writtenAtUtc | optional | informational only |
+`deviceId` = hex SHA-256(UTF-8 of `normalize(androidId) + "|" + normalize(abi)`), the same value as `DeviceFingerprint.compute()`. X Seller hex-decodes it and uses it directly as the fingerprint for `shamm_derive_device_key`. The crypto and the `.shammkey` format are unchanged. An older/alternative form with `androidId` + `abi` (+ optional `fingerprintSha256`) is also accepted.
 
-X Seller recomputes SHA-256(`androidId|abi`) using the same normalization: trim whitespace/CR/LF, and treat empty, `null` or `unknown` as "". If `fingerprintSha256` is present and doesn't match, X Seller refuses to send. The device key, wrapping and the `.shammkey` format are all unchanged.
+If no file is found, X Seller skips protected files for that phone and shows "Open Xama once on the phone". Plain files still go.
 
 ## Where X Seller puts files (Xama must scan these)
 
 * Protected packages (`<VideoId>.shammvid`, `.shammkey`, `.shammmeta`) go to the first writable of:
-  1. `Android/media/com.shammapps.xama/incoming/`. **Add this to `ShammKeyResolver.incomingDirs`**: `File(context.externalMediaDirs[0], "incoming")`.
-  2. `Download/XamaIncoming/` (already in incomingDirs).
+  1. `Download/XamaIncoming/` (preferred)
+  2. `Android/media/com.shammapps.xama/incoming/`. Xama moves files out of this folder when it scans, so a file that has disappeared means it was delivered.
 * Plain files:
   * videos go to `Movies/Xama/`
   * audio goes to `Music/Xama/`

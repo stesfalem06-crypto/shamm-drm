@@ -131,7 +131,7 @@ public sealed class BatchSender
                 return;
             }
             if (!AdbReady(t))
-                throw new PermanentSendException("open Xama on this phone once (it registers the phone), then send again.");
+                throw new PermanentSendException("Open Xama once on the phone (it registers the phone for protected files), then send again.");
         }
         if (AdbReady(t))
         {

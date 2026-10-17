@@ -16,6 +16,9 @@ public sealed record MtpPhone(
 /// </summary>
 public sealed class XamaDeviceFile
 {
+    public int Version { get; set; }
+    /// <summary>Xama 0.4.0+: hex SHA-256(androidId|abi) — the binding fingerprint itself.</summary>
+    public string DeviceId { get; set; } = "";
     public int Schema { get; set; }
     public string App { get; set; } = "";
     public string AndroidId { get; set; } = "";
@@ -47,8 +50,8 @@ public sealed class MtpService : IDisposable
     /// <summary>Protected packages: Xama's own media dir first (readable by Xama on Android 11+ without permissions).</summary>
     public static readonly string[] ProtectedDirs =
     [
-        @"Android\media\com.shammapps.xama\incoming",
         @"Download\XamaIncoming",
+        @"Android\media\com.shammapps.xama\incoming",
     ];
 
     private readonly object _pollLock = new();
@@ -308,7 +311,7 @@ public sealed class MtpService : IDisposable
                     dev.DownloadFile(path, ms);
                     var json = Encoding.UTF8.GetString(ms.ToArray()).TrimStart('\uFEFF');
                     var f = JsonSerializer.Deserialize<XamaDeviceFile>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                    if (f != null && !string.IsNullOrWhiteSpace(f.AndroidId)) return f;
+                    if (f != null && (!string.IsNullOrWhiteSpace(f.DeviceId) || !string.IsNullOrWhiteSpace(f.AndroidId))) return f;
                 }
                 catch (Exception ex) { AdbService.Log($"device file {rel}: {ex.Message}"); }
             }
@@ -327,6 +330,12 @@ public sealed class MtpService : IDisposable
             var s = (raw ?? "").Trim().Trim('\r', '\n');
             if (s.Length == 0 || s.Equals("null", StringComparison.OrdinalIgnoreCase) || s.Equals("unknown", StringComparison.OrdinalIgnoreCase)) return "";
             return s;
+        }
+        if (!string.IsNullOrWhiteSpace(f.DeviceId))
+        {
+            var hex = f.DeviceId.Trim();
+            if (hex.Length != 64) throw new InvalidDataException("Xama device file has a bad deviceId — open Xama again to refresh it.");
+            return Convert.FromHexString(hex);
         }
         var fp = SHA256.HashData(Encoding.UTF8.GetBytes($"{N(f.AndroidId)}|{N(f.Abi)}"));
         if (!string.IsNullOrWhiteSpace(f.FingerprintSha256) &&
