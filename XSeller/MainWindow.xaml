@@ -1,12 +1,13 @@
 <Window x:Class="XSeller.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="X Seller" Height="760" Width="1200"
-        MinHeight="600" MinWidth="980"
+        Title="X Seller" Height="720" Width="1180"
+        MinHeight="480" MinWidth="720"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display"
         Background="{StaticResource BgDark}"
         FontFamily="Segoe UI"
         WindowStartupLocation="CenterScreen">
-    <Grid Margin="24">
+    <Grid x:Name="RootGrid" Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -22,15 +23,19 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <Button x:Name="PhonesToggle" Grid.Column="3" Content="📱 Phones" Style="{StaticResource PrimaryButton}"
+                    Padding="12,6" Margin="10,0,0,0" Visibility="Collapsed" Click="PhonesToggle_Click"
+                    ToolTip="Show / hide the phone panel"/>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
                 <Border Width="10" Height="10" CornerRadius="5" Background="{StaticResource Accent}" Margin="0,0,10,0" VerticalAlignment="Center"/>
                 <TextBlock Text="X Seller" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
                 <TextBlock x:Name="ShopNameText" Margin="12,0,0,0" VerticalAlignment="Center"
                            Foreground="{StaticResource TextMuted}" FontSize="13"/>
             </StackPanel>
             <Border Grid.Column="1" Background="{StaticResource BgPanel}" CornerRadius="10" Padding="14,8" Margin="0,0,10,0">
-                <TextBlock x:Name="IndexCountText" Text="0 indexed" Foreground="{StaticResource TextMuted}" FontSize="12" VerticalAlignment="Center"/>
+                <TextBlock x:Name="IndexCountText" Text="0 indexed" Foreground="{StaticResource TextMuted}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360"/>
             </Border>
             <Border Grid.Column="2" Background="{StaticResource BgPanel}" CornerRadius="10" Padding="14,8">
                 <StackPanel Orientation="Horizontal">
@@ -47,14 +52,14 @@
                      FontSize="16" VerticalContentAlignment="Center" Padding="16,0"
                      Foreground="{StaticResource TextPrimary}" CaretBrush="{StaticResource Accent}"
                      TextChanged="SearchBox_TextChanged"/>
-            <TextBlock x:Name="SearchPlaceholder" Text="Search everything — title, path, video, pdf, image, exe, protected…"
+            <TextBlock x:Name="SearchPlaceholder" Text="Search everything — type part of a name or path (space = AND)"
                        Foreground="{StaticResource TextMuted}" FontSize="15"
                        VerticalAlignment="Center" Margin="18,0,0,0" IsHitTestVisible="False"/>
         </Grid>
 
         <!-- Filters + progress -->
         <Grid Grid.Row="2" Margin="0,0,0,10">
-            <StackPanel Orientation="Horizontal">
+            <WrapPanel Orientation="Horizontal" Margin="0,0,290,0">
                 <Border x:Name="ChipAll" Cursor="Hand" CornerRadius="16" Padding="14,6" Margin="0,0,8,0"
                         Background="{StaticResource Accent}" MouseLeftButtonUp="ChipAll_Click">
                     <TextBlock Text="All" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
@@ -79,7 +84,7 @@
                         Background="#2A2A3A" MouseLeftButtonUp="ChipProtected_Click">
                     <TextBlock Text="Protected" Foreground="{StaticResource TextMuted}" FontSize="12"/>
                 </Border>
-            </StackPanel>
+            </WrapPanel>
             <StackPanel x:Name="ProgressPanel" Orientation="Vertical" Visibility="Collapsed" HorizontalAlignment="Right" Width="280">
                 <ProgressBar Height="4" IsIndeterminate="True" BorderThickness="0"
                              Background="#2A2A3A" Foreground="{StaticResource Accent}"/>
@@ -91,23 +96,78 @@
         <!-- Split -->
         <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2.2*"/>
-                <ColumnDefinition Width="14"/>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*" MinWidth="320"/>
+                <ColumnDefinition x:Name="SplitterCol" Width="10"/>
+                <ColumnDefinition x:Name="PhoneCol" Width="340" MinWidth="250" MaxWidth="640"/>
             </Grid.ColumnDefinitions>
+            <GridSplitter Grid.Column="1" Width="10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                          Background="Transparent" ResizeBehavior="PreviousAndNext" ResizeDirection="Columns"
+                          ShowsPreview="False" Cursor="SizeWE" ToolTip="Drag to resize the phone panel"/>
 
             <Border Grid.Column="0" Background="{StaticResource BgPanel}" CornerRadius="14" Padding="2">
                 <Grid>
                     <ListView x:Name="ResultsList" Background="Transparent" BorderThickness="0"
                               Foreground="{StaticResource TextPrimary}"
-                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                              SelectionMode="Extended"
+                              VirtualizingPanel.IsVirtualizing="True"
+                              VirtualizingPanel.VirtualizationMode="Recycling"
+                              VirtualizingPanel.ScrollUnit="Item"
+                              ScrollViewer.IsDeferredScrollingEnabled="False"
+                              GridViewColumnHeader.Click="ResultsHeader_Click"
+                              MouseDoubleClick="ResultsList_MouseDoubleClick"
+                              PreviewKeyDown="ResultsList_PreviewKeyDown">
+                        <ListView.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Open" InputGestureText="Ctrl+Enter" Click="MenuOpen_Click"/>
+                                <MenuItem Header="Open folder" Click="MenuOpenFolder_Click"/>
+                                <MenuItem Header="Copy path" InputGestureText="Ctrl+Shift+C" Click="MenuCopyPath_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Add to send queue" InputGestureText="Enter" Click="MenuQueue_Click"/>
+                                <MenuItem Header="Send to phone" Click="MenuSend_Click"/>
+                            </ContextMenu>
+                        </ListView.ContextMenu>
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Title" Width="320" DisplayMemberBinding="{Binding Title}"/>
-                                <GridViewColumn Header="Type" Width="90" DisplayMemberBinding="{Binding KindLabel}"/>
-                                <GridViewColumn Header="Format" Width="70" DisplayMemberBinding="{Binding FormatLabel}"/>
-                                <GridViewColumn Header="Price" Width="60" DisplayMemberBinding="{Binding TokenPrice}"/>
-                                <GridViewColumn Header="Size" Width="80" DisplayMemberBinding="{Binding SizeLabel}"/>
+                                <GridViewColumn Width="300">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name, Mode=OneTime}" TextTrimming="CharacterEllipsis"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                    <GridViewColumnHeader Content="Name" Tag="Name"/>
+                                </GridViewColumn>
+                                <GridViewColumn Width="300">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Folder, Mode=OneTime}" TextTrimming="CharacterEllipsis"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                    <GridViewColumnHeader Content="Path" Tag="Path"/>
+                                </GridViewColumn>
+                                <GridViewColumn Width="80">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding SizeLabel, Mode=OneTime}" TextTrimming="CharacterEllipsis" TextAlignment="Right"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                    <GridViewColumnHeader Content="Size" Tag="Size"/>
+                                </GridViewColumn>
+                                <GridViewColumn Width="125">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding ModifiedLabel, Mode=OneTime}" TextTrimming="CharacterEllipsis"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                    <GridViewColumnHeader Content="Date modified" Tag="Modified"/>
+                                </GridViewColumn>
+                                <GridViewColumn Width="110">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding TypeLabel, Mode=OneTime}" TextTrimming="CharacterEllipsis"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                    <GridViewColumnHeader Content="Type" Tag="Type"/>
+                                </GridViewColumn>
                             </GridView>
                         </ListView.View>
                     </ListView>
@@ -117,13 +177,30 @@
                 </Grid>
             </Border>
 
-            <Border Grid.Column="2" Background="{StaticResource BgPanel}" CornerRadius="14" Padding="16">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Connected phones" FontSize="13"
-                               Foreground="{StaticResource TextMuted}" Margin="0,0,0,8"/>
-                    <StackPanel DockPanel.Dock="Bottom">
-                        <Button Content="Send to phone" Style="{StaticResource PrimaryButton}"
-                                Margin="0,0,0,8" Click="Send_Click" x:Name="SendButton"/>
+            <Border x:Name="PhonePanel" Grid.Column="2" Background="{StaticResource BgPanel}" CornerRadius="14" Padding="12">
+                <DockPanel x:Name="PhoneDock" SizeChanged="PhoneDock_SizeChanged">
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
+                        <TextBlock Text="Phones (tick to send)" FontSize="13" VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextMuted}"/>
+                        <TextBlock HorizontalAlignment="Right" FontSize="12" Cursor="Hand" VerticalAlignment="Center"
+                                   Foreground="{StaticResource Accent}" Text="⟳ Refresh" ToolTip="Restart adb and rescan phones"
+                                   MouseLeftButtonUp="RefreshPhones_Click"/>
+                    </Grid>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBlock FontSize="11" Cursor="Hand" Foreground="{StaticResource Accent}" Margin="0,0,14,0"
+                                   Text="Install phone drivers" ToolTip="Install ADB USB drivers (asks Windows permission)"
+                                   MouseLeftButtonUp="InstallDrivers_Click"/>
+                        <TextBlock FontSize="11" Cursor="Hand" Foreground="{StaticResource Accent}"
+                                   Text="Diagnostics" ToolTip="Copy a phone-detection report to the clipboard and Documents\XSeller\diag.txt"
+                                   MouseLeftButtonUp="Diagnostics_Click"/>
+                    </StackPanel>
+                    <TextBlock x:Name="AdbStatusText" DockPanel.Dock="Top" FontSize="10" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextMuted}" Margin="0,0,0,4" Text="adb: starting…"/>
+                    <TextBlock x:Name="UsbHintText" DockPanel.Dock="Top" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+                               Foreground="{StaticResource Accent}" Margin="0,0,0,8" Visibility="Collapsed"/>
+                    <ScrollViewer x:Name="ActionsScroll" DockPanel.Dock="Bottom" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled" Margin="0,4,0,0">
+                    <StackPanel>
                         <Button Content="Copy to USB / folder…" Style="{StaticResource PrimaryButton}"
                                 Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
                                 Margin="0,0,0,8" Click="CopyUsb_Click"/>
@@ -144,19 +221,85 @@
                         <Button Content="Add media folder…" Style="{StaticResource PrimaryButton}"
                                 Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
                                 Margin="0,0,0,6" Click="AddFolder_Click"/>
+                        <CheckBox x:Name="ScanEverythingCheck" Content="Scan everything (all drives, hidden + system)"
+                                  Foreground="{StaticResource TextPrimary}" FontSize="11" Margin="0,0,0,4"
+                                  Click="ScanEverything_Click"/>
+                        <CheckBox x:Name="AllDrivesCheck" Content="Index all fixed drives"
+                                  Foreground="{StaticResource TextPrimary}" FontSize="11" Margin="0,0,0,6"
+                                  Click="AllDrives_Click"/>
                         <Button Content="Remove selected folder" Style="{StaticResource PrimaryButton}"
                                 Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
                                 Click="RemoveFolder_Click"/>
                     </StackPanel>
+                    </ScrollViewer>
+                    <StackPanel DockPanel.Dock="Bottom">
+                        <Grid Margin="0,0,0,6">
+                            <TextBlock x:Name="QueueText" Text="Queue empty · Enter adds selection" FontSize="11"
+                                       Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
+                            <TextBlock HorizontalAlignment="Right" FontSize="11" Cursor="Hand"
+                                       Foreground="{StaticResource Accent}" Text="Clear"
+                                       MouseLeftButtonUp="ClearQueue_Click"/>
+                        </Grid>
+                        <Button Content="Send" Style="{StaticResource PrimaryButton}"
+                                Margin="0,0,0,8" Click="Send_Click" x:Name="SendButton"/>
+                    </StackPanel>
                     <Grid>
-                        <ListBox x:Name="DevicesList" Background="Transparent" BorderThickness="0"
-                                 Foreground="{StaticResource TextPrimary}"/>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl x:Name="DevicesList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#1E1E2A" CornerRadius="8" Padding="8" Margin="0,0,0,6">
+                                        <StackPanel>
+                                            <CheckBox IsChecked="{Binding IsChecked}" IsEnabled="{Binding IsReady}"
+                                                      Foreground="{StaticResource TextPrimary}">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Model}" FontWeight="SemiBold"/>
+                                                    <TextBlock FontSize="11" Foreground="{StaticResource TextMuted}">
+                                                        <Run Text="{Binding StateLabel, Mode=OneWay}"/>
+                                                        <Run Text=" · "/>
+                                                        <Run Text="{Binding Transport, Mode=OneWay}"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </CheckBox>
+                                            <TextBlock Text="{Binding Hint}" FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource Accent}" Margin="0,4,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Hint}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <ProgressBar Height="4" Margin="0,6,0,0" Maximum="100" Value="{Binding Progress}"
+                                                         Background="#2A2A3A" Foreground="{StaticResource Accent}" BorderThickness="0">
+                                                <ProgressBar.Style>
+                                                    <Style TargetType="ProgressBar">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Busy}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ProgressBar.Style>
+                                            </ProgressBar>
+                                            <TextBlock Text="{Binding ProgressText}" FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{StaticResource TextMuted}" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        </ScrollViewer>
                         <StackPanel x:Name="DevicesEmpty" VerticalAlignment="Center" Margin="4">
                             <TextBlock Text="Waiting for phone…" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap"/>
                             <TextBlock TextWrapping="Wrap" FontSize="12" Margin="0,8,0,0"
                                        Foreground="{StaticResource TextMuted}"
-                                       Text="1. Enable Developer options (tap Build number 7×)&#10;2. Turn on USB debugging once&#10;3. Plug in and tap Allow&#10;&#10;X Seller then detects the phone automatically and optimizes the session."/>
+                                       Text="1. Plug the phone in with a data USB cable&#10;2. Unlock it&#10;3. Pull down notifications › USB › choose “File transfer”&#10;&#10;No USB debugging needed. The phone appears here automatically."/>
                         </StackPanel>
                     </Grid>
                 </DockPanel>

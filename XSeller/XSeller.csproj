@@ -12,10 +12,20 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Startup/perf: precompiled code + dynamic PGO, compressed single file. -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <TieredPGO>true</TieredPGO>
+    <TieredCompilation>true</TieredCompilation>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="MediaDevices" Version="1.10.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -26,6 +36,42 @@
          workflow at build time (see build-xseller.yml) and dropped into
          platform-tools/ next to the published exe - you never have to
          install or configure ADB yourself. -->
+    <None Include="drivers\install-drivers.cmd" CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
+
+  <!-- Bundle signed ADB USB drivers next to the published exe (drivers\). Done here
+       rather than in the workflow so no workflow change is needed. Failures only warn. -->
+  <Target Name="BundleAdbDrivers" AfterTargets="Publish" Condition="'$(OS)' == 'Windows_NT' And '$(XSellerNoExtra)' != 'true'">
+    <PropertyGroup>
+      <DrvDir>$(PublishDir)drivers\</DrvDir>
+      <DrvTmp>$(IntermediateOutputPath)drvdl\</DrvTmp>
+    </PropertyGroup>
+    <DownloadFile SourceUrl="https://dl.google.com/android/repository/usb_driver_r13-windows.zip"
+                  DestinationFolder="$(DrvTmp)" Retries="3" ContinueOnError="WarnAndContinue" />
+    <Unzip SourceFiles="$(DrvTmp)usb_driver_r13-windows.zip" DestinationFolder="$(DrvDir)"
+           Condition="Exists('$(DrvTmp)usb_driver_r13-windows.zip')" ContinueOnError="WarnAndContinue" />
+    <DownloadFile SourceUrl="https://github.com/koush/adb.clockworkmod.com/releases/download/v1.0.0/UniversalAdbDriverSetup.msi"
+                  DestinationFolder="$(DrvDir)" DestinationFileName="UniversalAdbDriverSetup.msi"
+                  Retries="3" ContinueOnError="WarnAndContinue" />
+  </Target>
+
+  <!-- Extra 32-bit (win-x86) build in publish\x86\ for old 32-bit Windows 10 PCs. Done from the
+       project because the CI token cannot edit workflow files. Failures only warn; x64 is unaffected. -->
+  <Target Name="PublishX86" AfterTargets="Publish"
+          Condition="'$(OS)' == 'Windows_NT' And '$(RuntimeIdentifier)' == 'win-x64' And '$(XSellerNoExtra)' != 'true'">
+    <PropertyGroup>
+      <CryptoDir>$(MSBuildProjectDirectory)\..\crypto-core</CryptoDir>
+      <DotnetExe Condition="'$(DOTNET_HOST_PATH)' != ''">$(DOTNET_HOST_PATH)</DotnetExe>
+      <DotnetExe Condition="'$(DotnetExe)' == ''">dotnet</DotnetExe>
+      <X86Out>$([System.IO.Path]::GetFullPath('$(PublishDir)'))x86</X86Out>
+    </PropertyGroup>
+    <Exec Command="rustup target add i686-pc-windows-msvc" WorkingDirectory="$(CryptoDir)" ContinueOnError="WarnAndContinue" />
+    <Exec Command="cargo build --release --target i686-pc-windows-msvc" WorkingDirectory="$(CryptoDir)" ContinueOnError="WarnAndContinue" />
+    <Exec Command="&quot;$(DotnetExe)&quot; publish &quot;$(MSBuildProjectFullPath)&quot; -c $(Configuration) -r win-x86 --self-contained true -o &quot;$(X86Out)&quot; -p:XSellerNoExtra=true"
+          ContinueOnError="WarnAndContinue" />
+    <Copy SourceFiles="$(CryptoDir)\target\i686-pc-windows-msvc\release\shamm_crypto.dll" DestinationFolder="$(X86Out)"
+          Condition="Exists('$(CryptoDir)\target\i686-pc-windows-msvc\release\shamm_crypto.dll')" ContinueOnError="WarnAndContinue" />
+  </Target>
 
 </Project>

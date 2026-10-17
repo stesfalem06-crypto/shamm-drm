@@ -47,7 +47,7 @@ public partial class MainWindow : Window
         }
         StatusText.Text = _library.Count == 0
             ? "Ready. Encrypt your first video to start the catalog."
-            : $"Loaded {_library.Count} video(s) from library.";
+            : $"Loaded {_library.Count} item(s) from library.";
         UpdateEmptyState();
     }
 
@@ -55,8 +55,10 @@ public partial class MainWindow : Window
     {
         var dlg = new OpenFileDialog
         {
-            Filter = "Video files (*.mp4;*.mkv;*.mov;*.avi;*.webm)|*.mp4;*.mkv;*.mov;*.avi;*.webm|All files|*.*",
-            Title = "Select a video to encrypt"
+            Filter = "Videos and PDFs (*.mp4;*.mkv;*.mov;*.avi;*.webm;*.pdf)|*.mp4;*.mkv;*.mov;*.avi;*.webm;*.pdf|" +
+                     "Video files (*.mp4;*.mkv;*.mov;*.avi;*.webm)|*.mp4;*.mkv;*.mov;*.avi;*.webm|" +
+                     "PDF documents (*.pdf)|*.pdf|All files|*.*",
+            Title = "Select a video or PDF to encrypt"
         };
         if (dlg.ShowDialog() == true)
         {
@@ -71,7 +73,7 @@ public partial class MainWindow : Window
     {
         if (_selectedFile == null)
         {
-            StatusText.Text = "Choose a video file first.";
+            StatusText.Text = "Choose a video or PDF file first.";
             return;
         }
         if (!int.TryParse(PriceBox.Text, out var price) || price < 0)
@@ -92,8 +94,10 @@ public partial class MainWindow : Window
             ProgressLabel.Text = $"Encrypting \"{title}\"… this can take a while for large files.";
             StatusText.Text = ProgressLabel.Text;
 
-            var meta = await Task.Run(() =>
-                _encryptor.EncryptVideo(source, title, price, _outputDir, isVertical));
+            var isPdf = VideoEncryptor.IsPdfPath(source);
+            var meta = await Task.Run(() => isPdf
+                ? _encryptor.EncryptPdf(source, title, price, _outputDir)
+                : _encryptor.EncryptVideo(source, title, price, _outputDir, isVertical));
 
             _library.Add(meta);
             UpdateEmptyState();

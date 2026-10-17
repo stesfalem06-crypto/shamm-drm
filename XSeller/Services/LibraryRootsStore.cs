@@ -23,7 +23,27 @@ public static class LibraryRootsStore
     {
         public int Version { get; set; } = CurrentVersion;
         public List<string> Roots { get; set; } = new();
+        /// <summary>"Scan everything": all fixed drives + no hidden/system skipping.</summary>
+        public bool ScanEverything { get; set; }
     }
+
+    public static bool LoadScanEverything()
+    {
+        try
+        {
+            if (!File.Exists(StorePath)) return false;
+            return JsonSerializer.Deserialize<RootsDocument>(File.ReadAllText(StorePath))?.ScanEverything ?? false;
+        }
+        catch { return false; }
+    }
+
+    public static void SaveScanEverything(bool on, IEnumerable<string> roots)
+    {
+        _pendingScanEverything = on;
+        Save(roots);
+    }
+
+    private static bool? _pendingScanEverything;
 
     /// <summary>Default roots seeded only when the store file does not exist yet.</summary>
     public static List<string> DefaultRoots()
@@ -98,6 +118,7 @@ public static class LibraryRootsStore
         {
             Version = CurrentVersion,
             Roots = Normalize(roots),
+            ScanEverything = _pendingScanEverything ?? LoadScanEverything(),
         };
         var tmp = StorePath + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(doc, JsonOpts));
