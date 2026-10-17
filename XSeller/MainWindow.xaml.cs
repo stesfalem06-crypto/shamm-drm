@@ -374,7 +374,7 @@ public partial class MainWindow : Window
     {
         FilterKind.Protected => i => i.Kind == MediaKind.Protected || i.IsEncrypted,
         FilterKind.Video => i => i.Kind == MediaKind.Video,
-        FilterKind.Pdf => i => i.Kind == MediaKind.Pdf,
+        FilterKind.Pdf => i => i.Kind == MediaKind.Pdf || i.IsProtectedPdf,
         FilterKind.Image => i => i.Kind == MediaKind.Image,
         FilterKind.Exe => i => i.Kind == MediaKind.Exe,
         _ => null,

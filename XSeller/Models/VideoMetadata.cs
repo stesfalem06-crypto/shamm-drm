@@ -16,6 +16,13 @@ public class VideoMetadata
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? PosterBase64 { get; set; }
 
+    /// <summary>null/absent = video, "pdf" = protected PDF (same .shammvid crypto + key flow).</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ContentType { get; set; }
+
     [System.Text.Json.Serialization.JsonIgnore]
-    public string FormatLabel => IsVertical ? "Reels" : "Standard";
+    public bool IsPdf => string.Equals(ContentType, "pdf", StringComparison.OrdinalIgnoreCase);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string FormatLabel => IsPdf ? "PDF" : IsVertical ? "Reels" : "Standard";
 }

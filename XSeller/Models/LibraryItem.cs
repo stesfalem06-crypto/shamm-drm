@@ -21,6 +21,9 @@ public class LibraryItem
     public string? IvBase64 { get; set; }
     public string? WrappedContentKeyForShopsBase64 { get; set; }
     public string? PosterBase64 { get; set; }
+    /// <summary>Protected payload type from .shammmeta: null = video, "pdf" = PDF.</summary>
+    public string? ContentType { get; set; }
+    public bool IsProtectedPdf => IsEncrypted && string.Equals(ContentType, "pdf", StringComparison.OrdinalIgnoreCase);
     public DateTime ModifiedUtc { get; set; }
 
     /// <summary>Display name (file name; protected packages show their title).</summary>
@@ -50,7 +53,7 @@ public class LibraryItem
         get
         {
             if (IsEncrypted)
-                return IsVertical ? "Reels" : "DRM";
+                return IsProtectedPdf ? "PDF" : IsVertical ? "Reels" : "DRM";
             var ext = Path.GetExtension(FilePath);
             if (string.IsNullOrEmpty(ext)) return KindLabel;
             return ext.TrimStart('.').ToUpperInvariant();
@@ -77,6 +80,7 @@ public class LibraryItem
             IvBase64 = IvBase64 ?? "",
             WrappedContentKeyForShopsBase64 = WrappedContentKeyForShopsBase64 ?? "",
             PosterBase64 = string.IsNullOrWhiteSpace(PosterBase64) ? null : PosterBase64,
+            ContentType = string.IsNullOrWhiteSpace(ContentType) ? null : ContentType,
         };
     }
 }

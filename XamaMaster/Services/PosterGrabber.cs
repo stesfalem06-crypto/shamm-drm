@@ -133,7 +133,7 @@ public static class PosterGrabber
     }
 
     /// <summary>Baseline JPEG, no metadata; lowers quality until under 200 KB.</summary>
-    private static byte[] Encode(BitmapSource bmp)
+    internal static byte[] Encode(BitmapSource bmp)
     {
         var rgb = new FormatConvertedBitmap(bmp, PixelFormats.Bgr24, null, 0);
         byte[] bytes = Array.Empty<byte>();
@@ -150,7 +150,7 @@ public static class PosterGrabber
     }
 
     // ---- Windows Shell thumbnail fallback (what Explorer shows) ----
-    private static BitmapSource? ShellThumbnail(string path, int size)
+    internal static BitmapSource? ShellThumbnail(string path, int size)
     {
         var iid = typeof(IShellItemImageFactory).GUID;
         if (SHCreateItemFromParsingName(path, IntPtr.Zero, ref iid, out var f) != 0 || f == null) return null;

@@ -17,6 +17,19 @@ public class VideoEncryptor
     /// on-screen library list and the local catalog database.
     /// </summary>
     public VideoMetadata EncryptVideo(string sourcePath, string title, int tokenPrice, string outputDir, bool isVertical)
+        => EncryptFile(sourcePath, title, tokenPrice, outputDir, isVertical, contentType: null);
+
+    /// <summary>
+    /// PDF documents use exactly the same package and crypto as videos; only
+    /// ContentType = "pdf" in the .shammmeta differs (and the poster is page 1).
+    /// </summary>
+    public VideoMetadata EncryptPdf(string sourcePath, string title, int tokenPrice, string outputDir)
+        => EncryptFile(sourcePath, title, tokenPrice, outputDir, isVertical: false, contentType: "pdf");
+
+    public static bool IsPdfPath(string path) =>
+        string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase);
+
+    private VideoMetadata EncryptFile(string sourcePath, string title, int tokenPrice, string outputDir, bool isVertical, string? contentType)
     {
         var meta = new VideoMetadata
         {
@@ -25,10 +38,11 @@ public class VideoEncryptor
             TokenPrice = tokenPrice,
             OriginalSizeBytes = new FileInfo(sourcePath).Length,
             IsVertical = isVertical,
+            ContentType = contentType,
         };
 
         // 0. Public poster from the plain source (before encryption). Optional: never blocks encryption.
-        var poster = PosterGrabber.Grab(sourcePath);
+        var poster = contentType == "pdf" ? PdfPoster.Grab(sourcePath) : PosterGrabber.Grab(sourcePath);
         if (poster != null)
         {
             meta.PosterBase64 = Convert.ToBase64String(poster);

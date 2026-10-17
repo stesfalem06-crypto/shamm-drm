@@ -20,7 +20,18 @@ public class VideoMetadata
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? PosterBase64 { get; set; }
 
-    /// <summary>UI column: "Reels" vs "Standard". Not serialized specially.</summary>
+    /// <summary>
+    /// Payload type. null/absent = video (all packages made before PDF support), "pdf" = PDF document.
+    /// The encrypted body is still &lt;VideoId&gt;.shammvid with the same AES-256-CTR + key wrapping,
+    /// so key delivery and device binding are identical for both types.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ContentType { get; set; }
+
     [System.Text.Json.Serialization.JsonIgnore]
-    public string FormatLabel => IsVertical ? "Reels" : "Standard";
+    public bool IsPdf => string.Equals(ContentType, "pdf", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>UI column: "PDF", "Reels" or "Standard". Not serialized.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string FormatLabel => IsPdf ? "PDF" : IsVertical ? "Reels" : "Standard";
 }

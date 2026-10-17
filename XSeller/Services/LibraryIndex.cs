@@ -302,9 +302,10 @@ public sealed class LibraryIndex : IDisposable
             IvBase64 = meta.IvBase64,
             WrappedContentKeyForShopsBase64 = meta.WrappedContentKeyForShopsBase64,
             PosterBase64 = meta.PosterBase64,
+            ContentType = meta.ContentType,
             IndexedAtUtc = DateTime.UtcNow,
         };
-        item.SearchBlob = $"{vidPath}|{item.Title} protected drm".ToLowerInvariant();
+        item.SearchBlob = $"{vidPath}|{item.Title} protected drm{(meta.IsPdf ? " pdf document" : "")}".ToLowerInvariant();
         return item;
     }
 
