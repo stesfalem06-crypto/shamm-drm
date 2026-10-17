@@ -344,38 +344,6 @@ public sealed class MtpService : IDisposable
         return fp;
     }
 
-    /// <summary>Enumerate the whole phone storage (for phone-as-root indexing).</summary>
-    public List<(string Path, ulong Size, DateTime? Modified)> EnumerateAll(string id, int max, CancellationToken ct) =>
-        WithDevice(id, (dev, root) =>
-        {
-            var list = new List<(string, ulong, DateTime?)>();
-            var stack = new Stack<string>();
-            stack.Push(root);
-            while (stack.Count > 0 && list.Count < max && !ct.IsCancellationRequested)
-            {
-                var dir = stack.Pop();
-                MediaDirectoryInfo di;
-                try { di = dev.GetDirectoryInfo(dir); } catch { continue; }
-                IEnumerable<MediaFileSystemInfo> entries;
-                try { entries = di.EnumerateFileSystemInfos().ToList(); } catch { continue; }
-                foreach (var e in entries)
-                {
-                    if (e is MediaDirectoryInfo) stack.Push(e.FullName);
-                    else list.Add((e.FullName, e.Length, e.LastWriteTime));
-                }
-            }
-            return list;
-        });
-
-    public void Download(string id, string remotePath, string localPath) =>
-        WithDevice(id, (dev, _) =>
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
-            using var fs = File.Create(localPath);
-            dev.DownloadFile(remotePath, fs);
-            return true;
-        });
-
     /// <summary>Text dump for Diagnostics.</summary>
     public string DiagnosticsText()
     {

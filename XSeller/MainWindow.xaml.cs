@@ -67,13 +67,6 @@ public partial class MainWindow : Window
         // Primary: MTP (no USB debugging). Secondary: adb. The list never depends on adb.
         _mtp.PhonesChanged += phones => Dispatcher.BeginInvoke(() =>
         {
-            foreach (var gone in _mtpPhones.Where(o => phones.All(n => n.Id != o.Id)))
-                if (_indexedPhones.Remove(gone.Id))
-                {
-                    var label = !string.IsNullOrWhiteSpace(gone.Model) && !gone.Name.Contains(gone.Model, StringComparison.OrdinalIgnoreCase)
-                        ? $"{gone.Name} ({gone.Model})" : gone.Name;
-                    _index.RemoveExternal($"[{label}]");
-                }
             _mtpPhones = phones;
             RebuildDeviceRows();
         });
@@ -84,11 +77,6 @@ public partial class MainWindow : Window
         StatusText.Text = "Loading index… type to search instantly.";
         Loaded += (_, _) => { SearchBox.Focus(); Keyboard.Focus(SearchBox); };
         SearchBox.PreviewKeyDown += SearchBox_PreviewKeyDown;
-        ResultsList.SelectionChanged += (_, e) =>
-        {
-            foreach (var o in e.RemovedItems) if (o is LibraryItem r) r.IsSelected = false;
-            foreach (var o in e.AddedItems) if (o is LibraryItem a) a.IsSelected = true;
-        };
         Closed += (_, _) => { _usbTimer?.Stop(); _mtp.Dispose(); _adb.Dispose(); _index.Dispose(); };
     }
 
@@ -201,101 +189,6 @@ public partial class MainWindow : Window
         return IntPtr.Zero;
     }
 
-    // ---------------------------------------------------------------- thumbnail grid
-
-    private bool _thumbMode;
-    private int _perRow = 5;
-
-    private void ViewDetails_Click(object sender, MouseButtonEventArgs e) => SetThumbMode(false);
-    private void ViewThumbs_Click(object sender, MouseButtonEventArgs e) => SetThumbMode(true);
-
-    private void SetThumbMode(bool on)
-    {
-        _thumbMode = on;
-        var menu = ResultsList.ContextMenu ?? ThumbGrid.ContextMenu;
-        ResultsList.ContextMenu = null; ThumbGrid.ContextMenu = null;
-        if (on) ThumbGrid.ContextMenu = menu; else ResultsList.ContextMenu = menu;
-        ResultsList.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
-        ThumbGrid.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-        void Paint(Border b, bool active)
-        {
-            b.Background = new SolidColorBrush(active ? Color.FromRgb(0xFF, 0x6B, 0x2C) : Color.FromRgb(0x2A, 0x2A, 0x3A));
-            if (b.Child is TextBlock tb) tb.Foreground = active ? Brushes.White : new SolidColorBrush(Color.FromRgb(0x8E, 0x8E, 0x9C));
-        }
-        Paint(ViewDetailsBtn, !on);
-        Paint(ViewThumbsBtn, on);
-        if (on) { RebuildThumbRows(); ThumbGrid.Focus(); }
-        else ResultsList.Focus();
-    }
-
-    private void RebuildThumbRows()
-    {
-        if (ResultsList.ItemsSource is not List<LibraryItem> results) { ThumbGrid.ItemsSource = null; return; }
-        var per = Math.Max(1, _perRow);
-        var rows = new List<List<LibraryItem>>((results.Count + per - 1) / per);
-        for (var i = 0; i < results.Count; i += per)
-            rows.Add(results.GetRange(i, Math.Min(per, results.Count - i)));
-        ThumbGrid.ItemsSource = rows;
-    }
-
-    private void ThumbGrid_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        var per = Math.Max(1, (int)((ThumbGrid.ActualWidth - 24) / 176));
-        if (per == _perRow) return;
-        _perRow = per;
-        if (_thumbMode) RebuildThumbRows();
-    }
-
-    private int _anchorIndex = -1;
-
-    private void Tile_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is not LibraryItem item) return;
-        ThumbGrid.Focus();
-        if (e.ClickCount == 2) { OpenItems(new List<LibraryItem> { item }); e.Handled = true; return; }
-        SelectTile(item, Keyboard.Modifiers);
-        e.Handled = true;
-    }
-
-    private void Tile_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is LibraryItem item && !item.IsSelected)
-            SelectTile(item, ModifierKeys.None);
-    }
-
-    private void SelectTile(LibraryItem item, ModifierKeys mods)
-    {
-        if (ResultsList.ItemsSource is not List<LibraryItem> results) return;
-        var idx = results.IndexOf(item);
-        if ((mods & ModifierKeys.Shift) != 0 && _anchorIndex >= 0)
-        {
-            ResultsList.SelectedItems.Clear();
-            var (a, b) = (Math.Min(_anchorIndex, idx), Math.Max(_anchorIndex, idx));
-            for (var i = a; i <= b; i++) ResultsList.SelectedItems.Add(results[i]);
-            return;
-        }
-        if ((mods & ModifierKeys.Control) != 0)
-        {
-            if (item.IsSelected) ResultsList.SelectedItems.Remove(item); else ResultsList.SelectedItems.Add(item);
-        }
-        else
-        {
-            ResultsList.SelectedItems.Clear();
-            ResultsList.SelectedItems.Add(item);
-        }
-        _anchorIndex = idx;
-    }
-
-    private void ThumbGrid_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
-        if (e.Key == Key.Enter && ctrl) { OpenItems(SelectedItems()); e.Handled = true; }
-        else if (e.Key == Key.Enter) { QueueSelection(); e.Handled = true; }
-        else if (e.Key == Key.A && ctrl) { ResultsList.SelectAll(); e.Handled = true; }
-        else if (e.Key == Key.C && ctrl && (Keyboard.Modifiers & ModifierKeys.Shift) != 0) { CopyPaths(); e.Handled = true; }
-        else if (e.Key == Key.Escape) { SearchBox.Focus(); SearchBox.SelectAll(); e.Handled = true; }
-    }
-
     // ---------------------------------------------------------------- scan everything / phone index
 
     private void ScanEverything_Click(object sender, RoutedEventArgs e)
@@ -309,30 +202,6 @@ public partial class MainWindow : Window
             ? "Scanning everything: all fixed drives, including hidden and system folders. Results appear as they are found."
             : "Back to normal scanning (hidden/system folders and C:\\Windows skipped unless you add them).";
         Task.Run(_index.FullRescan);
-    }
-
-    private readonly HashSet<string> _indexedPhones = new();
-
-    private async void IndexPhone_Click(object sender, RoutedEventArgs e)
-    {
-        var rows = _deviceRows.Where(r => r.IsChecked && r.MtpId != null && _mtp.IsReady(r.MtpId)).ToList();
-        if (rows.Count == 0) { StatusText.Text = "Tick a ready phone (connected in File transfer mode) to index its storage."; return; }
-        foreach (var r in rows)
-        {
-            var id = r.MtpId!;
-            var name = r.Model;
-            StatusText.Text = $"Indexing {name} storage over MTP… (large phones take a minute)";
-            try
-            {
-                var entries = await Task.Run(() => _mtp.EnumerateAll(id, 300_000, CancellationToken.None));
-                var items = entries.Select(x => LibraryIndex.MakePhoneItem(id, name, x.Path, (long)x.Size,
-                    x.Modified?.ToUniversalTime() ?? default)).ToList();
-                _index.SetExternal($"[{name}]", items);
-                _indexedPhones.Add(id);
-                StatusText.Text = $"Indexed {items.Count:N0} file(s) on {name}. Search shows them as [{name}]\\… — Open / Send copies them from the phone.";
-            }
-            catch (Exception ex) { StatusText.Text = $"Could not index {name}: {ex.Message}"; }
-        }
     }
 
     private void TryAddRoot(string? path, bool persist)
@@ -462,9 +331,7 @@ public partial class MainWindow : Window
             keep = ResultsList.SelectedItems.Cast<LibraryItem>().Select(i => i.FilePath)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var o in ResultsList.SelectedItems) if (o is LibraryItem old) old.IsSelected = false;
         ResultsList.ItemsSource = results;
-        if (_thumbMode) RebuildThumbRows();
         if (keep != null && keep.Count <= 2000)
         {
             foreach (var it in results)
@@ -528,18 +395,6 @@ public partial class MainWindow : Window
         {
             try
             {
-                if (it.IsOnPhone)
-                {
-                    var phoneItem = it;
-                    StatusText.Text = $"Copying {it.Name} from phone…";
-                    Task.Run(() => LocalPathFor(phoneItem)).ContinueWith(t => Dispatcher.BeginInvoke(() =>
-                    {
-                        if (t.IsFaulted) { StatusText.Text = $"Could not copy from phone: {t.Exception?.GetBaseException().Message}"; return; }
-                        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(t.Result) { UseShellExecute = true }); StatusText.Text = "Opened " + phoneItem.Name; }
-                        catch (Exception ex) { StatusText.Text = $"Could not open {phoneItem.Name}: {ex.Message}"; }
-                    }));
-                    continue;
-                }
                 if (it.IsEncrypted)
                 {
                     // Protected packages are not playable on the PC; show them in Explorer instead.
@@ -554,7 +409,6 @@ public partial class MainWindow : Window
 
     private static void OpenFolder(LibraryItem it)
     {
-        if (it.IsOnPhone) return;
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{it.FilePath}\"")
         { UseShellExecute = true });
     }
@@ -831,7 +685,7 @@ public partial class MainWindow : Window
         });
         try
         {
-            var results = await _batch.SendAsync(items, devices, progress, CancellationToken.None, LocalPathFor);
+            var results = await _batch.SendAsync(items, devices, progress, CancellationToken.None);
             var sent = results.Sum(r => r.Sent);
             var failed = results.Sum(r => r.Failed);
             var dropped = results.Where(r => r.Disconnected).Select(r => r.Model).ToList();
@@ -856,15 +710,6 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Phone-indexed rows are downloaded to a local cache before sending/opening.</summary>
-    private string LocalPathFor(LibraryItem item)
-    {
-        if (!item.IsOnPhone) return item.FilePath;
-        var local = Path.Combine(Path.GetTempPath(), "XSeller-phone", Math.Abs(item.FilePath.GetHashCode()).ToString("X"), item.Name);
-        if (!File.Exists(local) || new FileInfo(local).Length != item.SizeBytes)
-            _mtp.Download(item.MtpDeviceId!, item.MtpPath!, local);
-        return local;
-    }
 
     private void CopyUsb_Click(object sender, RoutedEventArgs e)
     {

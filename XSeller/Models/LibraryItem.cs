@@ -6,48 +6,8 @@ namespace XSeller.Models;
 /// Unified row in the Everything-style index: encrypted DRM packages and
 /// plain media (video, PDF, image, exe) the shop can send freely.
 /// </summary>
-public class LibraryItem : System.ComponentModel.INotifyPropertyChanged
+public class LibraryItem
 {
-    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
-    private void Raise(string n) => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(n));
-
-    /// <summary>Set when the row comes from a phone indexed over MTP (phone-as-root).</summary>
-    public string? MtpDeviceId { get; set; }
-    public bool IsOnPhone => MtpDeviceId != null;
-    /// <summary>Remote WPD path on the phone (FilePath holds a display path "[Phone]\...").</summary>
-    public string? MtpPath { get; set; }
-
-    private bool _isSelected;
-    /// <summary>Mirrors ResultsList selection so the thumbnail grid can highlight tiles.</summary>
-    public bool IsSelected { get => _isSelected; set { if (_isSelected == value) return; _isSelected = value; Raise(nameof(IsSelected)); } }
-
-    private System.Windows.Media.ImageSource? _thumb;
-    private bool _thumbRequested;
-    /// <summary>Lazy Shell thumbnail (only requested when a tile is actually shown).</summary>
-    public System.Windows.Media.ImageSource? Thumbnail
-    {
-        get
-        {
-            if (_thumb == null && !_thumbRequested)
-            {
-                _thumbRequested = true;
-                XSeller.Services.ThumbnailService.Request(this);
-            }
-            return _thumb;
-        }
-        set { _thumb = value; Raise(nameof(Thumbnail)); }
-    }
-
-    public string KindGlyph => Kind switch
-    {
-        MediaKind.Protected => "🔒",
-        MediaKind.Video => "🎬",
-        MediaKind.Pdf => "📄",
-        MediaKind.Image => "🖼",
-        MediaKind.Exe => "⚙",
-        _ => "📁",
-    };
-
     public string Id { get; set; } = "";
     public string Title { get; set; } = "";
     public string FilePath { get; set; } = "";
@@ -67,7 +27,7 @@ public class LibraryItem : System.ComponentModel.INotifyPropertyChanged
     private string? _name;
 
     /// <summary>Containing folder, Everything-style "Path" column.</summary>
-    public string Folder => IsOnPhone ? FilePath[..Math.Max(0, FilePath.LastIndexOf('\\'))] : Path.GetDirectoryName(FilePath) ?? "";
+    public string Folder => Path.GetDirectoryName(FilePath) ?? "";
 
     public string TypeLabel => IsEncrypted ? "Protected (" + FormatLabel + ")"
         : Kind == MediaKind.Other ? FormatLabel + " file" : FormatLabel + " " + KindLabel;

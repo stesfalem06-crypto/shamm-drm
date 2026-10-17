@@ -187,42 +187,6 @@ public sealed class LibraryIndex : IDisposable
         SaveCacheSafe();
     }
 
-    // ---------------------------------------------------------------- external (phone) sources
-
-    /// <summary>Replace all rows from one external source (e.g. a phone indexed over MTP).</summary>
-    public void SetExternal(string sourcePrefix, IEnumerable<LibraryItem> items)
-    {
-        RemoveExternal(sourcePrefix);
-        foreach (var it in items) _items[it.FilePath] = it;
-        MarkChanged();
-    }
-
-    public void RemoveExternal(string sourcePrefix)
-    {
-        foreach (var kv in _items)
-            if (kv.Key.StartsWith(sourcePrefix, StringComparison.OrdinalIgnoreCase)) _items.TryRemove(kv.Key, out _);
-        MarkChanged();
-    }
-
-    public static LibraryItem MakePhoneItem(string deviceId, string phoneName, string remotePath, long size, DateTime modUtc)
-    {
-        var display = $"[{phoneName}]{remotePath}";
-        return new LibraryItem
-        {
-            Id = "mtp:" + display.ToLowerInvariant(),
-            Title = Path.GetFileNameWithoutExtension(remotePath),
-            FilePath = display,
-            MtpDeviceId = deviceId,
-            MtpPath = remotePath,
-            IsEncrypted = false,
-            Kind = ClassifyPlain(remotePath),
-            SizeBytes = size,
-            ModifiedUtc = modUtc,
-            IndexedAtUtc = DateTime.UtcNow,
-            SearchBlob = (display + " phone").ToLowerInvariant(),
-        };
-    }
-
     // ---------------------------------------------------------------- scanning
 
     private readonly record struct RawEntry(string Path, long Size, DateTime ModifiedUtc);
@@ -641,7 +605,7 @@ public sealed class LibraryIndex : IDisposable
             {
                 if (Interlocked.Exchange(ref _cacheDirty, 0) == 0) return;
                 Directory.CreateDirectory(FirstRunBootstrap.DocsRoot);
-                var items = _items.Values.Where(i => !i.IsEncrypted && !i.IsOnPhone).ToArray();
+                var items = _items.Values.Where(i => !i.IsEncrypted).ToArray();
                 var tmp = CachePath + ".tmp";
                 using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
                 using (var bw = new BinaryWriter(fs, System.Text.Encoding.UTF8))
