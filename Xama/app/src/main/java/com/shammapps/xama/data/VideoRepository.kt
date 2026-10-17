@@ -96,6 +96,7 @@ class VideoRepository(private val context: Context) {
                             isVertical = meta.IsVertical,
                             folderName = "Protected",
                             dateAddedSec = metaFile.lastModified() / 1000,
+                            isPdf = meta.ContentType.equals("pdf", ignoreCase = true),
                             posterPath = com.shammapps.xama.util.Posters.resolveShipped(
                                 context, dir, meta.VideoId, meta.PosterBase64
                             ),

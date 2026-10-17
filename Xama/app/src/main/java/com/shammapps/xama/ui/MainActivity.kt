@@ -78,6 +78,8 @@ class MainActivity : AppCompatActivity() {
     private var allItems: List<LocalVideo> = emptyList()
     private var videos: List<LocalVideo> = emptyList()
     private var audio: List<LocalVideo> = emptyList()
+    /** Protected PDFs (shown only in the Protected tab). */
+    private var docs: List<LocalVideo> = emptyList()
     private var folders: List<VideoFolder> = emptyList()
     private var tab = Tab.VIDEOS
     private var query = ""
@@ -339,7 +341,8 @@ class MainActivity : AppCompatActivity() {
     private fun applyLibrary(items: List<LocalVideo>) {
         allItems = items
         signature = items.joinToString("|") { it.id + ":" + it.title }
-        videos = items.filter { !it.isAudio }
+        videos = items.filter { !it.isAudio && !it.isPdf }
+        docs = items.filter { it.isPdf }
         audio = items.filter { it.isAudio }
         folders = try { repository.loadFolders(videos) } catch (_: Exception) { emptyList() }
         musicFolders = audio.groupBy { it.folderName.ifBlank { "Other" } }
@@ -572,7 +575,7 @@ class MainActivity : AppCompatActivity() {
             }
             Tab.PROTECTED -> {
                 header.text = "Protected"
-                showVideos(list, sortVideos(videos.filter { it.isEncrypted && matches(it) }), watched, animate)
+                showVideos(list, sortVideos((videos + docs).filter { it.isEncrypted && matches(it) }), watched, animate)
             }
             Tab.REELS -> {
                 header.text = "Reels"
@@ -629,7 +632,7 @@ class MainActivity : AppCompatActivity() {
                 profile.visibility = View.VISIBLE
                 findViewById<TextView>(R.id.statTotal).text = videos.size.toString()
                 findViewById<TextView>(R.id.statMusic).text = audio.size.toString()
-                findViewById<TextView>(R.id.statProtected).text = videos.count { it.isEncrypted }.toString()
+                findViewById<TextView>(R.id.statProtected).text = (videos.count { it.isEncrypted } + docs.size).toString()
                 findViewById<TextView>(R.id.statFolders).text = folders.size.toString()
                 bindScanAll()
                 if (animate) profile.startAnimation(AnimationUtils.loadAnimation(this, R.anim.item_fade_up))
@@ -811,7 +814,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openVideo(video: LocalVideo, context: List<LocalVideo>) {
-        val playlist = context.filter { !it.isAudio }.take(500)
+        if (video.isPdf) {
+            startActivity(Intent(this, PdfViewerActivity::class.java).apply {
+                putExtra(PdfViewerActivity.EXTRA_ID, video.id)
+                putExtra(PdfViewerActivity.EXTRA_TITLE, video.title)
+                putExtra(PdfViewerActivity.EXTRA_IV, video.ivBase64)
+            })
+            return
+        }
+        val playlist = context.filter { !it.isAudio && !it.isPdf }.take(500)
         startActivity(Intent(this, PlayerActivity::class.java).apply {
             putExtra(EXTRA_VIDEO_ID, video.id)
             putExtra(EXTRA_TITLE, video.title)

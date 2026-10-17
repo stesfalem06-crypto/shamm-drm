@@ -30,6 +30,8 @@ data class LocalVideo(
     val height: Int = 0,
     /** Protected items: unencrypted poster JPEG shipped by X Seller (if any). */
     val posterPath: String? = null,
+    /** Protected PDF document (opened in the in-app viewer, never in the video player). */
+    val isPdf: Boolean = false,
 )
 
 data class VideoFolder(

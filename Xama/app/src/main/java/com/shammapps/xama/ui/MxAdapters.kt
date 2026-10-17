@@ -43,7 +43,7 @@ object MxFormat {
 
     fun meta(context: Context, v: LocalVideo): String {
         val parts = ArrayList<String>(3)
-        if (v.isEncrypted) parts.add("Protected")
+        if (v.isEncrypted) parts.add(if (v.isPdf) "Protected PDF" else "Protected")
         if (v.sizeBytes > 0) parts.add(Formatter.formatShortFileSize(context, v.sizeBytes))
         resolution(v).takeIf { it.isNotEmpty() }?.let { parts.add(it) }
         return parts.joinToString("  •  ")
@@ -118,7 +118,10 @@ class MxVideoAdapter(
         val ctx = holder.itemView.context
         holder.title.text = v.title
         holder.meta.text = MxFormat.meta(ctx, v)
-        if (v.durationMs > 0) {
+        if (v.isPdf) {
+            holder.duration.visibility = View.VISIBLE
+            holder.duration.text = "PDF"
+        } else if (v.durationMs > 0) {
             holder.duration.visibility = View.VISIBLE
             holder.duration.text = Ui.formatDuration(v.durationMs)
         } else {

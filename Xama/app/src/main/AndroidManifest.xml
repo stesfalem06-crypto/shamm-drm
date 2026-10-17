@@ -56,6 +56,11 @@
             android:launchMode="singleTop"/>
 
         <activity
+            android:name=".ui.PdfViewerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"/>
+
+        <activity
             android:name=".ui.OnboardingActivity"
             android:exported="false"/>
 
