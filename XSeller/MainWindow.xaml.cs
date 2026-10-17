@@ -75,7 +75,9 @@ public partial class MainWindow : Window
         StartUsbScan();
 
         StatusText.Text = "Loading index… type to search instantly.";
-        Loaded += (_, _) => { SearchBox.Focus(); Keyboard.Focus(SearchBox); };
+        SourceInitialized += (_, _) => FitToWorkArea();
+        SizeChanged += (_, _) => ApplyResponsive();
+        Loaded += (_, _) => { ApplyResponsive(); SearchBox.Focus(); Keyboard.Focus(SearchBox); };
         SearchBox.PreviewKeyDown += SearchBox_PreviewKeyDown;
         Closed += (_, _) => { _usbTimer?.Stop(); _mtp.Dispose(); _adb.Dispose(); _index.Dispose(); };
     }
@@ -277,7 +279,80 @@ public partial class MainWindow : Window
     {
         SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
             ? Visibility.Visible : Visibility.Collapsed;
-        ApplySearch();
+        // ~30 ms debounce: fast typists trigger one search, not one per key.
+        _searchDebounce ??= CreateDebounce();
+        _searchDebounce.Stop();
+        _searchDebounce.Start();
+    }
+
+    private System.Windows.Threading.DispatcherTimer? _searchDebounce;
+    private System.Windows.Threading.DispatcherTimer CreateDebounce()
+    {
+        var t = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Input)
+        { Interval = TimeSpan.FromMilliseconds(30) };
+        t.Tick += (_, _) => { t.Stop(); ApplySearch(); };
+        return t;
+    }
+
+    // ---------------------------------------------------------------- responsive layout
+
+    private const double PhonePanelCollapseWidth = 900;
+    private bool _phonePanelForced;
+    private GridLength _phoneWidth = new(340);
+
+    private void FitToWorkArea()
+    {
+        var wa = SystemParameters.WorkArea; // DIPs, current DPI aware
+        if (wa.Width < 1300 || wa.Height < 820)
+        {
+            WindowState = WindowState.Maximized;
+        }
+        else
+        {
+            Width = Math.Min(wa.Width * 0.9, 1800);
+            Height = Math.Min(wa.Height * 0.9, 1100);
+            Left = wa.Left + (wa.Width - Width) / 2;
+            Top = wa.Top + (wa.Height - Height) / 2;
+        }
+        MinWidth = Math.Min(MinWidth, wa.Width);
+        MinHeight = Math.Min(MinHeight, wa.Height);
+    }
+
+    private void ApplyResponsive()
+    {
+        var w = ActualWidth;
+        RootGrid.Margin = new Thickness(w < 1100 || ActualHeight < 700 ? 8 : 16);
+        var narrow = w < PhonePanelCollapseWidth;
+        PhonesToggle.Visibility = narrow ? Visibility.Visible : Visibility.Collapsed;
+        var show = !narrow || _phonePanelForced;
+        if (show && PhonePanel.Visibility != Visibility.Visible)
+        {
+            PhonePanel.Visibility = Visibility.Visible;
+            PhoneCol.MinWidth = 250;
+            PhoneCol.Width = _phoneWidth;
+            SplitterCol.Width = new GridLength(10);
+        }
+        else if (!show && PhonePanel.Visibility == Visibility.Visible)
+        {
+            _phoneWidth = PhoneCol.Width;
+            PhonePanel.Visibility = Visibility.Collapsed;
+            PhoneCol.MinWidth = 0;
+            PhoneCol.Width = new GridLength(0);
+            SplitterCol.Width = new GridLength(0);
+        }
+        if (show && narrow) PhoneCol.Width = new GridLength(Math.Min(_phoneWidth.Value, Math.Max(250, w * 0.45)));
+    }
+
+    private void PhonesToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _phonePanelForced = PhonePanel.Visibility != Visibility.Visible;
+        ApplyResponsive();
+    }
+
+    private void PhoneDock_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Keep the phone list visible: secondary actions scroll instead of squeezing it.
+        ActionsScroll.MaxHeight = Math.Max(90, PhoneDock.ActualHeight * 0.45);
     }
 
     private void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
