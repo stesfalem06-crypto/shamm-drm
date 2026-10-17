@@ -82,35 +82,75 @@ object XamaStorage {
         val appVersion: String,
     )
 
-    /** Writes the identity file to both MTP-visible locations. Returns the paths written. */
-    fun writeDeviceIdentity(context: Context): List<File> {
+    /**
+     * Writes the identity file to every MTP-visible location X Seller checks
+     * (docs/XAMA_DEVICE_FILE.md): Android/media/<pkg>/xama-device.json,
+     * Download/Xama/.xama-device.json and Download/Xama/xama-device.json (non-dot,
+     * for phones that hide dot files over MTP). [force] rewrites even if unchanged
+     * (done on every app launch) and always re-runs the media scanner.
+     */
+    fun writeDeviceIdentity(context: Context, force: Boolean = false): List<File> {
         val json = GsonBuilder().setPrettyPrinting().create().toJson(
             Identity(1, deviceIdHex(context), Build.MODEL ?: "", Build.MANUFACTURER ?: "", "xama", BuildConfig.VERSION_NAME)
         )
+        val downloadXama = File(publicDir(Environment.DIRECTORY_DOWNLOADS), "Xama")
         val targets = listOf(
             File(mediaDir(context), "xama-device.json"),
-            File(File(publicDir(Environment.DIRECTORY_DOWNLOADS), "Xama"), ".xama-device.json"),
+            File(downloadXama, ".xama-device.json"),
+            File(downloadXama, "xama-device.json"),
         )
         val written = ArrayList<File>()
+        var anyChange = false
         for (f in targets) {
             try {
                 f.parentFile?.mkdirs()
-                if (!f.exists() || f.readText() != json) f.writeText(json)
+                if (force || !f.exists() || f.readText() != json) {
+                    f.writeText(json)
+                    anyChange = true
+                }
                 written.add(f)
             } catch (_: Exception) {
+                // Android 10+: Download/Xama may be blocked for direct writes (e.g. file owned
+                // by another app). Fall back to MediaStore.Downloads.
+                if (f.parentFile == downloadXama && writeViaMediaStore(context, f.name, json)) {
+                    anyChange = true
+                }
             }
         }
-        // Also make sure the drop folders exist so they are visible over MTP.
         try { mediaIncomingDir(context).mkdirs() } catch (_: Exception) {}
         try { File(publicDir(Environment.DIRECTORY_DOWNLOADS), "XamaIncoming").mkdirs() } catch (_: Exception) {}
-        if (written.isNotEmpty()) {
-            // MTP lists what MediaStore knows about; index the new files.
+        if (written.isNotEmpty() && (force || anyChange)) {
+            // Windows MTP only shows files MediaStore knows about.
             try {
                 MediaScannerConnection.scanFile(context, written.map { it.absolutePath }.toTypedArray(), null, null)
             } catch (_: Exception) {
             }
         }
         return written
+    }
+
+    private fun writeViaMediaStore(context: Context, name: String, json: String): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        return try {
+            val resolver = context.contentResolver
+            val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            val rel = Environment.DIRECTORY_DOWNLOADS + "/Xama/"
+            // Reuse our own existing row if present.
+            val existing = resolver.query(
+                collection, arrayOf(android.provider.MediaStore.MediaColumns._ID),
+                "${android.provider.MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${android.provider.MediaStore.MediaColumns.DISPLAY_NAME}=?",
+                arrayOf(rel, name), null
+            )?.use { c -> if (c.moveToFirst()) android.content.ContentUris.withAppendedId(collection, c.getLong(0)) else null }
+            val uri = existing ?: resolver.insert(collection, android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, rel)
+            }) ?: return false
+            resolver.openOutputStream(uri, "wt")?.use { it.write(json.toByteArray(Charsets.UTF_8)) } ?: return false
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun identityWritten(context: Context): Boolean = File(mediaDir(context), "xama-device.json").exists()

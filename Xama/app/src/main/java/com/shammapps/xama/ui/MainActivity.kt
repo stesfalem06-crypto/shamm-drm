@@ -225,6 +225,14 @@ class MainActivity : AppCompatActivity() {
 
         if (LibraryCache.items.isNotEmpty()) applyLibrary(LibraryCache.items)
 
+        // Rewrite every identity-file copy on each launch (+ media scan) so X Seller sees it over MTP.
+        if (savedInstanceState == null) {
+            val app = applicationContext
+            loadExecutor.execute {
+                try { com.shammapps.xama.storage.XamaStorage.writeDeviceIdentity(app, force = true) } catch (_: Exception) {}
+            }
+        }
+
         // First run: show the USB / shop-PC setup guide before asking for media access.
         if (savedInstanceState == null && !OnboardingActivity.isDone(this)) {
             startActivity(Intent(this, OnboardingActivity::class.java))
