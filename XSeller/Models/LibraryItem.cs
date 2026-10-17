@@ -20,6 +20,7 @@ public class LibraryItem
     public DateTime IndexedAtUtc { get; set; } = DateTime.UtcNow;
     public string? IvBase64 { get; set; }
     public string? WrappedContentKeyForShopsBase64 { get; set; }
+    public string? PosterBase64 { get; set; }
     public DateTime ModifiedUtc { get; set; }
 
     /// <summary>Display name (file name; protected packages show their title).</summary>
@@ -75,6 +76,7 @@ public class LibraryItem
             IsVertical = IsVertical,
             IvBase64 = IvBase64 ?? "",
             WrappedContentKeyForShopsBase64 = WrappedContentKeyForShopsBase64 ?? "",
+            PosterBase64 = string.IsNullOrWhiteSpace(PosterBase64) ? null : PosterBase64,
         };
     }
 }

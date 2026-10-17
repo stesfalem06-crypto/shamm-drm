@@ -251,6 +251,7 @@ public sealed class LibraryIndex : IDisposable
     private static bool IsPackagePart(string ext) =>
         ext.Equals(".shammvid", StringComparison.OrdinalIgnoreCase) ||
         ext.Equals(".shammkey", StringComparison.OrdinalIgnoreCase) ||
+        ext.Equals(".shammthumb", StringComparison.OrdinalIgnoreCase) ||
         ext.Equals(".shammmeta", StringComparison.OrdinalIgnoreCase);
 
     internal static MediaKind ClassifyPlain(string path)
@@ -300,6 +301,7 @@ public sealed class LibraryIndex : IDisposable
             ModifiedUtc = fi.LastWriteTimeUtc,
             IvBase64 = meta.IvBase64,
             WrappedContentKeyForShopsBase64 = meta.WrappedContentKeyForShopsBase64,
+            PosterBase64 = meta.PosterBase64,
             IndexedAtUtc = DateTime.UtcNow,
         };
         item.SearchBlob = $"{vidPath}|{item.Title} protected drm".ToLowerInvariant();

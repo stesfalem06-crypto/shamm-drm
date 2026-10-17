@@ -16,6 +16,10 @@ public class VideoMetadata
     public bool IsVertical { get; set; }
     public string WrappedContentKeyForShopsBase64 { get; set; } = "";
 
+    /// <summary>Optional public poster: base64 JPEG 320x180 (also shipped as &lt;VideoId&gt;.shammthumb). Unencrypted.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? PosterBase64 { get; set; }
+
     /// <summary>UI column: "Reels" vs "Standard". Not serialized specially.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string FormatLabel => IsVertical ? "Reels" : "Standard";

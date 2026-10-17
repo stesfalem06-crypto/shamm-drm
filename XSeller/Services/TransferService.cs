@@ -72,12 +72,20 @@ public class TransferService
                 {
                     push(shammvidPath, $"{video.VideoId}.shammvid");
                     push(keyFilePath, $"{video.VideoId}.shammkey");
-                    push(metaFilePath, $"{video.VideoId}.shammmeta");
+                    // Public poster (unencrypted) before the meta, so Xama sees it when it picks up the package.
+                    var thumbPath = ResolvePoster(video, shammvidPath, tmpTag);
+                    if (thumbPath != null)
+                    {
+                        try { push(thumbPath, $"{video.VideoId}.shammthumb"); }
+                        catch (Exception ex) { AdbService.Log("poster push failed (non-fatal): " + ex.Message); }
+                    }
+                    push(metaFilePath, $"{video.VideoId}.shammmeta"); // last: signals the package is complete
                 }
                 finally
                 {
                     try { File.Delete(keyFilePath); } catch { }
                     try { File.Delete(metaFilePath); } catch { }
+                    try { File.Delete(Path.Combine(Path.GetTempPath(), $"{video.VideoId}.{tmpTag}.shammthumb")); } catch { }
                 }
 
                 lock (LedgerGate) _ledger.RecordTransfer(new LedgerEntry
@@ -99,6 +107,21 @@ public class TransferService
         {
             NativeCrypto.shamm_wipe(contentKey, NativeCrypto.KeyLen);
         }
+    }
+
+    /// <summary>&lt;VideoId&gt;.shammthumb next to the package, else a temp file from PosterBase64.</summary>
+    private static string? ResolvePoster(VideoMetadata video, string shammvidPath, string tmpTag)
+    {
+        try
+        {
+            var side = Path.Combine(Path.GetDirectoryName(shammvidPath) ?? "", $"{video.VideoId}.shammthumb");
+            if (File.Exists(side)) return side;
+            if (string.IsNullOrWhiteSpace(video.PosterBase64)) return null;
+            var tmp = Path.Combine(Path.GetTempPath(), $"{video.VideoId}.{tmpTag}.shammthumb");
+            File.WriteAllBytes(tmp, Convert.FromBase64String(video.PosterBase64));
+            return tmp;
+        }
+        catch { return null; }
     }
 
     /// <summary>Plain / open file → phone (Xama plain folder + Movies/Xama). No ledger charge.</summary>
@@ -135,6 +158,8 @@ public class TransferService
             File.Copy(item.FilePath, destVid, true);
             if (!string.IsNullOrEmpty(item.MetaPath) && File.Exists(item.MetaPath))
                 File.Copy(item.MetaPath, Path.Combine(destFolder, Path.GetFileName(item.MetaPath)), true);
+            var thumb = Path.ChangeExtension(item.FilePath, ".shammthumb");
+            if (File.Exists(thumb)) File.Copy(thumb, Path.Combine(destFolder, Path.GetFileName(thumb)), true);
         }
         else
         {
