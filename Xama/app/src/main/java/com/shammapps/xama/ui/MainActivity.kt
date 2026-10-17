@@ -86,6 +86,17 @@ class MainActivity : AppCompatActivity() {
     /** Drilled-in music folder (Music > Folders). */
     private var openMusicFolder: VideoFolder? = null
     private var musicFolders: List<VideoFolder> = emptyList()
+    /** Per-screen List / Thumbnails choice for video lists. */
+    private fun videoScreenKey(): String = when {
+        tab == Tab.PROTECTED -> "protected"
+        tab == Tab.REELS -> "reels"
+        openFolder != null -> "folder"
+        else -> "search"
+    }
+    private fun cardsFor(key: String = videoScreenKey()) = prefs.getBoolean("cards_$key", false)
+    private fun isVideoListScreen(): Boolean =
+        tab == Tab.PROTECTED || (tab == Tab.REELS && !reelsByFolder) ||
+            (tab == Tab.VIDEOS && (openFolder != null || query.isNotEmpty()))
     private var reelsByFolder = false
     private var musicByFolder = false
     private var pendingFolderName: String? = null
@@ -176,11 +187,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         findViewById<View>(R.id.btnSearch).setOnClickListener { if (searchOpen) closeSearch() else openSearch() }
-        findViewById<View>(R.id.btnViewMode).setOnClickListener {
-            gridMode = !gridMode
-            prefs.edit().putBoolean("grid_mode", gridMode).apply()
-            render(animate = true)
-        }
+        findViewById<View>(R.id.btnViewMode).setOnClickListener { toggleViewMode() }
         findViewById<View>(R.id.btnSort).setOnClickListener { showSortSheet() }
         findViewById<View>(R.id.btnMore).setOnClickListener { showMoreSheet() }
         findViewById<View>(R.id.btnBackFolder).setOnClickListener { onBackPressedDispatcher.onBackPressed() }
@@ -375,7 +382,9 @@ class MainActivity : AppCompatActivity() {
         val videoScreen = tab == Tab.VIDEOS || tab == Tab.PROTECTED || tab == Tab.REELS
         findViewById<ImageButton>(R.id.btnViewMode).apply {
             visibility = if (videoScreen && !searchOpen) View.VISIBLE else View.GONE
-            setImageResource(if (gridMode) R.drawable.ic_list else R.drawable.ic_grid)
+            val altOn = if (isVideoListScreen()) cardsFor() else gridMode
+            setImageResource(if (altOn) R.drawable.ic_list else R.drawable.ic_grid)
+            contentDescription = if (isVideoListScreen()) "List / Thumbnails" else "List / Grid"
         }
         findViewById<View>(R.id.btnSort).visibility = if (inList && !searchOpen) View.VISIBLE else View.GONE
         findViewById<View>(R.id.btnBackFolder).visibility =
@@ -416,6 +425,20 @@ class MainActivity : AppCompatActivity() {
         paint(R.id.navProfileIcon, R.id.navProfileLabel, tab == Tab.PROFILE)
     }
 
+    /** Folder lists: List / Grid. Video lists: List / Thumbnails (remembered per screen). */
+    private fun toggleViewMode() {
+        if (isVideoListScreen()) {
+            val key = videoScreenKey()
+            val cards = !cardsFor(key)
+            prefs.edit().putBoolean("cards_$key", cards).apply()
+            Toast.makeText(this, if (cards) "Thumbnails" else "List", Toast.LENGTH_SHORT).show()
+        } else {
+            gridMode = !gridMode
+            prefs.edit().putBoolean("grid_mode", gridMode).apply()
+        }
+        render(animate = true)
+    }
+
     private fun showSortSheet() {
         val sheet = OptionSheet(this, "Sort by", if (sortDescending) "Descending" else "Ascending")
         Sort.values().forEach { s ->
@@ -439,17 +462,20 @@ class MainActivity : AppCompatActivity() {
     private fun showMoreSheet() {
         OptionSheet(this, "Xama")
             .add("Refresh", R.drawable.ic_refresh) { rescan() }
-            .add(if (gridMode) "List view" else "Grid view", if (gridMode) R.drawable.ic_list else R.drawable.ic_grid) {
-                gridMode = !gridMode
-                prefs.edit().putBoolean("grid_mode", gridMode).apply()
-                render(animate = true)
-            }
+            .add(
+                if (isVideoListScreen()) (if (cardsFor()) "List view" else "Thumbnails view")
+                else (if (gridMode) "List view" else "Grid view"),
+                R.drawable.ic_grid
+            ) { toggleViewMode() }
             .add("Connect to shop PC (USB setup)", R.drawable.ic_usb) { openUsbSetup() }
             .add("About", R.drawable.ic_info) { openAbout() }
             .show()
     }
 
     // ---------------------------------------------------------------- rendering
+
+    /** Thumbnail cards: one column on phones, more on tablets / landscape. */
+    private fun cardSpan(): Int = (resources.configuration.screenWidthDp / 360).coerceIn(1, 4)
 
     private fun gridSpan(): Int {
         val w = resources.configuration.screenWidthDp
@@ -555,8 +581,9 @@ class MainActivity : AppCompatActivity() {
                     val feed = reelsFeed(videos.filter { matches(it) })
                     if (feed.isEmpty()) showEmpty(emptyFor(Tab.VIDEOS)) else {
                         list.visibility = View.VISIBLE
-                        list.layoutManager = if (gridMode) GridLayoutManager(this, gridSpan()) else LinearLayoutManager(this)
-                        list.adapter = MxVideoAdapter(feed, gridMode, watched) { v -> openReels(feed, v) }
+                        val cards = cardsFor("reels")
+                        list.layoutManager = if (cards) GridLayoutManager(this, cardSpan()) else LinearLayoutManager(this)
+                        list.adapter = MxVideoAdapter(feed, cards, watched) { v -> openReels(feed, v) }
                         if (animate) animateList(list)
                     }
                 }
@@ -608,8 +635,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
         list.visibility = View.VISIBLE
-        list.layoutManager = if (gridMode) GridLayoutManager(this, gridSpan()) else LinearLayoutManager(this)
-        list.adapter = MxVideoAdapter(items, gridMode, watched) { openVideo(it, items) }
+        val cards = cardsFor()
+        list.layoutManager = if (cards) GridLayoutManager(this, cardSpan()) else LinearLayoutManager(this)
+        list.adapter = MxVideoAdapter(items, cards, watched) { openVideo(it, items) }
         if (animate) animateList(list)
     }
 

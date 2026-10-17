@@ -28,6 +28,8 @@ data class LocalVideo(
     /** Video frame size from MediaStore (0 when unknown). */
     val width: Int = 0,
     val height: Int = 0,
+    /** Protected items: unencrypted poster JPEG shipped by X Seller (if any). */
+    val posterPath: String? = null,
 )
 
 data class VideoFolder(

@@ -34,9 +34,24 @@ object ThumbLoader {
 
     fun load(context: Context, video: LocalVideo, into: ImageView, tagKey: Any) {
         if (video.isEncrypted) {
+            // Protected: only plain poster files (shipped by X Seller or captured in-app).
             into.tag = tagKey
             into.setImageDrawable(null)
             into.setBackgroundResource(R.drawable.thumb_protected)
+            val pkey = "poster:" + video.id
+            cache.get(pkey)?.let { into.setImageBitmap(it); into.background = null; return }
+            val app = context.applicationContext
+            pool.execute {
+                val file = Posters.bestFile(app, video.id, video.posterPath)
+                val bmp = file?.let { Posters.decode(it, 480) }
+                if (bmp != null) synchronized(cache) { cache.put(pkey, bmp) }
+                main.post {
+                    if (into.tag == tagKey && bmp != null) {
+                        into.setImageBitmap(bmp)
+                        into.background = null
+                    }
+                }
+            }
             return
         }
         val key = video.contentUri ?: video.filePath
@@ -71,6 +86,10 @@ object ThumbLoader {
                 }
             }
         }
+    }
+
+    fun invalidate(id: String) {
+        synchronized(cache) { cache.remove("poster:$id") }
     }
 
     /** Larger artwork for the audio player screen (not cached). */

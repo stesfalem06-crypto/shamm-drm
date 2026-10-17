@@ -117,13 +117,49 @@ object XamaStorage {
 
     // ------------------------------------------------------------ package import
 
-    private val PACKAGE_EXTS = setOf("shammvid", "shammkey", "shammmeta")
+    private val PACKAGE_EXTS = setOf("shammvid", "shammkey", "shammmeta", "shammthumb")
 
     /**
      * Moves protected packages dropped in Android/media/<pkg>/incoming into the app's
      * private incoming folder, which the existing (unchanged) key resolver reads.
      * The .shammmeta file is moved last so a half-copied package is never listed.
      */
+    /**
+     * Moves complete protected packages found anywhere (SHAREit, Xender, Bluetooth,
+     * Download, ...) into the app's private incoming folder - the same import approach
+     * as Android/media, so the unchanged key resolver can open them.
+     * [metaFiles] are `<VideoId>.shammmeta` files; the package is moved only when the
+     * matching .shammvid and .shammkey sit next to it.
+     */
+    fun importPackages(context: Context, metaFiles: List<File>) {
+        val dest = File(context.getExternalFilesDir(null) ?: return, "incoming")
+        val privateRoot = context.getExternalFilesDir(null)?.absolutePath ?: return
+        for (meta in metaFiles) {
+            try {
+                if (meta.absolutePath.startsWith(privateRoot)) continue
+                val dir = meta.parentFile ?: continue
+                val base = meta.nameWithoutExtension
+                val vid = File(dir, "$base.shammvid")
+                val key = File(dir, "$base.shammkey")
+                if (!vid.exists() || !key.exists()) continue
+                val now = System.currentTimeMillis()
+                if (listOf(meta, vid, key).any { now - it.lastModified() < 3_000 }) continue
+                dest.mkdirs()
+                val parts = listOf(vid, key, File(dir, "$base.shammthumb"), meta).filter { it.exists() }
+                for (f in parts) moveInto(f, File(dest, f.name))
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun moveInto(f: File, target: File) {
+        if (target.exists()) target.delete()
+        if (!f.renameTo(target)) {
+            f.copyTo(target, overwrite = true)
+            if (target.length() == f.length()) f.delete()
+        }
+    }
+
     fun importMediaIncoming(context: Context) {
         val src = mediaIncomingDir(context)
         val dest = File(context.getExternalFilesDir(null) ?: return, "incoming")

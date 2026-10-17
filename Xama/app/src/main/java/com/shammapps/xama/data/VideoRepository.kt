@@ -22,13 +22,16 @@ class VideoRepository(private val context: Context) {
      */
     fun loadAll(): List<LocalVideo> {
         try { com.shammapps.xama.storage.XamaStorage.importMediaIncoming(context) } catch (_: Exception) {}
+        // Walk first: it imports protected packages found in receive folders.
+        val walked = if (com.shammapps.xama.storage.XamaStorage.canWalkStorage(context)) {
+            try {
+                walkStorage(full = com.shammapps.xama.storage.XamaStorage.scanAllEnabled(context))
+            } catch (_: Throwable) { emptyList() }
+        } else emptyList()
         val protected = loadIncoming()
         val device = loadDeviceVideos()
         val appPlain = loadAppPlain() + loadXamaPublicFolders()
         val audio = loadDeviceAudio()
-        val walked = if (com.shammapps.xama.storage.XamaStorage.scanAllEnabled(context) &&
-            com.shammapps.xama.storage.XamaStorage.canWalkStorage(context)
-        ) walkStorage() else emptyList()
         val seen = HashSet<String>()
         val fileKeys = HashSet<String>()
         val out = ArrayList<LocalVideo>(protected.size + device.size + appPlain.size + audio.size)
@@ -93,6 +96,9 @@ class VideoRepository(private val context: Context) {
                             isVertical = meta.IsVertical,
                             folderName = "Protected",
                             dateAddedSec = metaFile.lastModified() / 1000,
+                            posterPath = com.shammapps.xama.util.Posters.resolveShipped(
+                                context, dir, meta.VideoId, meta.PosterBase64
+                            ),
                         )
                     )
                 } catch (_: Exception) { }
@@ -177,31 +183,38 @@ class VideoRepository(private val context: Context) {
     }
 
     /**
-     * "Scan all folders": walks shared storage including hidden folders and
-     * Android/media. Android/data is included where readable (Android 10 and
-     * older; Android 11+ blocks it even with All files access).
+     * Receive folders (SHAREit, Xender, Bluetooth, WhatsApp, ...) are always walked when
+     * storage access allows it; "Scan all folders" additionally walks the whole of
+     * shared storage, including hidden folders and Android/media. Android/data is only
+     * readable on Android 10 and older. Results are cached per directory, so repeat
+     * scans only re-list folders that changed. Protected packages found on the way
+     * are imported (moved) into the private incoming folder.
      */
-    fun walkStorage(maxFiles: Int = 4000, maxDepth: Int = 14): List<LocalVideo> {
-        val out = ArrayList<LocalVideo>()
-        val root = com.shammapps.xama.storage.XamaStorage.root()
-        val stack = ArrayDeque<Pair<File, Int>>()
-        stack.addLast(root to 0)
-        val visited = HashSet<String>()
-        while (stack.isNotEmpty() && out.size < maxFiles) {
-            val (dir, depth) = stack.removeLast()
-            val canon = try { dir.canonicalPath } catch (_: Exception) { dir.absolutePath }
-            if (!visited.add(canon)) continue
-            val children = try { dir.listFiles() } catch (_: Exception) { null } ?: continue
-            for (c in children) {
-                if (c.isDirectory) {
-                    if (depth < maxDepth) stack.addLast(c to depth + 1)
-                } else if (isMedia(c)) {
-                    out.add(fileItem(c, dir.name.ifBlank { "Other" }))
-                    if (out.size >= maxFiles) break
-                }
-            }
+    fun walkStorage(full: Boolean, maxFiles: Int = 50_000): List<LocalVideo> {
+        val scanner = com.shammapps.xama.storage.StorageScanner(context)
+        val roots = scanner.receiveRoots().toMutableList()
+        if (full) roots.add(com.shammapps.xama.storage.XamaStorage.root())
+        val found = scanner.walk(roots, { name ->
+            val ext = name.substringAfterLast('.', "").lowercase()
+            ext in VIDEO_EXTS || ext in AUDIO_EXTS || ext == "shammmeta"
+        }, maxFiles = maxFiles)
+        val metas = found.filter { it.file.extension.equals("shammmeta", true) }.map { it.file }
+        if (metas.isNotEmpty()) {
+            com.shammapps.xama.storage.XamaStorage.importPackages(context, metas)
         }
-        return out
+        return found.filter { !it.file.extension.equals("shammmeta", true) }.map { f ->
+            LocalVideo(
+                id = "file-" + f.file.absolutePath.hashCode().toString(16) + "-" + f.size,
+                title = f.file.nameWithoutExtension,
+                filePath = f.file.absolutePath,
+                isEncrypted = false,
+                folderName = f.folderLabel,
+                isAudio = f.file.extension.lowercase() in AUDIO_EXTS,
+                sizeBytes = f.size,
+                displayName = f.file.name,
+                dateAddedSec = f.mtime / 1000,
+            )
+        }
     }
 
     /** MediaStore scan — capped so huge libraries don't freeze the UI thread. */

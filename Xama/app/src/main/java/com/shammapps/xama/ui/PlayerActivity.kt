@@ -250,6 +250,7 @@ class PlayerActivity : AppCompatActivity() {
             if (isPlaying) {
                 window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 scheduleHide()
+                schedulePosterCapture()
             } else {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 handler.removeCallbacks(hideControlsRunnable)
@@ -674,6 +675,53 @@ class PlayerActivity : AppCompatActivity() {
         val extractors = ExtractorsFactory { arrayOf(SubtitleExtractor(parserFactory.create(format), format)) }
         return ProgressiveMediaSource.Factory(DefaultDataSource.Factory(this), extractors)
             .createMediaSource(MediaItem.fromUri(sub.uri))
+    }
+
+    // ---------------------------------------------------------------- poster capture
+
+    private val posterAttempted = HashSet<String>()
+    private val posterRunnable = Runnable { capturePoster() }
+
+    /**
+     * Protected items without a poster: grab one frame from the on-screen video surface
+     * a few seconds into the first authorised playback and keep a small JPEG in
+     * app-private storage. Uses only what is already displayed (PixelCopy of the
+     * SurfaceView); the decryption pipeline is not touched.
+     */
+    private fun schedulePosterCapture() {
+        val item = current ?: return
+        if (!item.isEncrypted || item.id in posterAttempted) return
+        if (com.shammapps.xama.util.Posters.bestFile(this, item.id, item.posterPath) != null) return
+        handler.removeCallbacks(posterRunnable)
+        handler.postDelayed(posterRunnable, 4_000)
+    }
+
+    private fun capturePoster() {
+        val item = current ?: return
+        val p = player ?: return
+        if (!p.isPlaying || isInPipCompat()) return
+        val surface = playerView.videoSurfaceView as? android.view.SurfaceView ?: return
+        if (surface.width <= 0 || surface.height <= 0) return
+        posterAttempted.add(item.id)
+        val w = 640
+        val h = (surface.height * (w.toFloat() / surface.width)).toInt().coerceAtLeast(1)
+        val bmp = try {
+            android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        } catch (_: Throwable) { return }
+        try {
+            android.view.PixelCopy.request(surface, bmp, { result ->
+                if (result == android.view.PixelCopy.SUCCESS) {
+                    Thread {
+                        com.shammapps.xama.util.Posters.saveCaptured(applicationContext, item.id, bmp)
+                        bmp.recycle()
+                    }.start()
+                } else {
+                    bmp.recycle()
+                }
+            }, handler)
+        } catch (_: Throwable) {
+            bmp.recycle()
+        }
     }
 
     private fun bindTitle(item: LocalVideo) {

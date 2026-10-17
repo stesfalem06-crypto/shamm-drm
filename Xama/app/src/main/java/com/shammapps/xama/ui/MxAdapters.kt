@@ -93,7 +93,8 @@ class MxFolderAdapter(
 
 class MxVideoAdapter(
     private val items: List<LocalVideo>,
-    private val grid: Boolean,
+    /** false = compact list rows, true = large 16:9 thumbnail cards. */
+    private val cards: Boolean,
     private val watched: Set<String>,
     private val onClick: (LocalVideo) -> Unit,
 ) : RecyclerView.Adapter<MxVideoAdapter.Holder>() {
@@ -109,7 +110,7 @@ class MxVideoAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder = Holder(
         LayoutInflater.from(parent.context)
-            .inflate(if (grid) R.layout.item_mx_video_grid else R.layout.item_mx_video, parent, false)
+            .inflate(if (cards) R.layout.item_mx_video_card else R.layout.item_mx_video, parent, false)
     )
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
