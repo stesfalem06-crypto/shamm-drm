@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private readonly LedgerDatabase _ledger = new();
     private readonly TransferService _transfer;
     private readonly SettlementExporter _settlement;
+    private readonly Closings _closings;
     private readonly LibraryIndex _index = new();
 
     private readonly BatchSender _batch;
@@ -36,6 +37,10 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Accounts.Init(_ledger);
+        _closings = new Closings(_ledger);
+        Session.Changed += () => Dispatcher.BeginInvoke(UpdateUserUi);
+        UpdateUserUi();
         _transfer = new TransferService(_adb, _ledger);
         _batch = new BatchSender(_adb, _mtp, _transfer);
         LoadShopName();
@@ -77,7 +82,14 @@ public partial class MainWindow : Window
         StatusText.Text = "Loading index… type to search instantly.";
         SourceInitialized += (_, _) => FitToWorkArea();
         SizeChanged += (_, _) => ApplyResponsive();
-        Loaded += (_, _) => { ApplyResponsive(); SearchBox.Focus(); Keyboard.Focus(SearchBox); };
+        Loaded += (_, _) =>
+        {
+            ApplyResponsive();
+            if (Accounts.Instance.Enabled && !SignIn(allowCancel: false)) { Close(); return; }
+            SearchBox.Focus(); Keyboard.Focus(SearchBox);
+            var warn = Integrity.Warnings(_ledger, _closings);
+            if (warn.Count > 0) StatusText.Text = "⚠ Tamper warning: " + warn[0] + (warn.Count > 1 ? $" (+{warn.Count - 1} more — see Admin dashboard)" : "");
+        };
         SearchBox.PreviewKeyDown += SearchBox_PreviewKeyDown;
         Closed += (_, _) => { _usbTimer?.Stop(); _mtp.Dispose(); _adb.Dispose(); _index.Dispose(); };
     }
@@ -707,10 +719,94 @@ public partial class MainWindow : Window
     {
         try
         {
-            var debt = _ledger.GetOutstandingDebt();
-            DebtText.Text = $"{debt} token{(debt == 1 ? "" : "s")}";
+            var p = _closings.Pending(_shopName);
+            DebtText.Text = Views.Ui.Money(p.PlatformDue);
+            DebtText.ToolTip = $"Since closing #{p.Number - 1}: {p.SalesCount} sale(s), revenue {Views.Ui.Money(p.Revenue)}. Settle with the platform agent via “Closing”.";
         }
-        catch { DebtText.Text = "0 tokens"; }
+        catch { DebtText.Text = "0"; }
+    }
+
+    // ---------------- accounts / admin / closing
+
+    private void UpdateUserUi()
+    {
+        var on = Accounts.Instance.Enabled;
+        UserButton.Content = on ? $"👤 {Session.UserName}{(Session.IsAdmin ? " (admin)" : "")}" : "👤 Accounts off";
+        AdminButton.Visibility = Session.IsAdmin ? Visibility.Visible : Visibility.Collapsed;
+        SetPriceMenu.Visibility = Session.IsAdmin ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private bool SignIn(bool allowCancel)
+    {
+        var u = Views.LoginWindow.Show(this, _shopName, allowCancel);
+        if (u == null) return false;
+        Session.SignIn(u);
+        StatusText.Text = $"Signed in as {u.Name}.";
+        return true;
+    }
+
+    private void UserButton_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu { PlacementTarget = UserButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        MenuItem Item(string h, Action a) { var m = new MenuItem { Header = h }; m.Click += (_, _) => a(); menu.Items.Add(m); return m; }
+        if (Accounts.Instance.Enabled)
+        {
+            Item("Switch user…", () => SignIn(allowCancel: true));
+            Item("Log out", () =>
+            {
+                Session.SignOut();
+                if (!SignIn(allowCancel: false)) Close();
+            });
+        }
+        else
+        {
+            Item("Enable accounts (owner + employees)…", () =>
+            {
+                if (Accounts.Instance.ListUsers().Any(u => u.Role == UserRole.Admin && !u.Disabled))
+                {
+                    Accounts.Instance.Set("accounts_enabled", "1");
+                    if (!SignIn(allowCancel: true)) { Accounts.Instance.DisableAccounts(); }
+                }
+                else
+                {
+                    var admin = Views.LoginWindow.EnableAccounts(this);
+                    if (admin != null) Session.SignIn(admin);
+                }
+                UpdateUserUi();
+            });
+        }
+        menu.IsOpen = true;
+    }
+
+    private void Admin_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Session.IsAdmin) { StatusText.Text = "Admin only."; return; }
+        Views.AdminWindow.Show(this, _ledger, _closings, _shopName, () => Dispatcher.BeginInvoke(() => { RefreshDebt(); UpdateUserUi(); }));
+        RefreshDebt();
+    }
+
+    private void Closing_Click(object sender, RoutedEventArgs e)
+    {
+        Views.ClosingWindow.Show(this, _closings, _ledger, _shopName, () => Dispatcher.BeginInvoke(RefreshDebt));
+        RefreshDebt();
+    }
+
+    private void MenuSetPrice_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Session.IsAdmin) return;
+        var items = SelectedItems().Where(i => !i.IsEncrypted).ToList();
+        if (items.Count == 0) { StatusText.Text = "Pick plain (unprotected) items — protected videos carry their own price."; return; }
+        var cur = Prices.GetItem(items[0].FilePath);
+        var ans = Views.AdminWindow.Prompt(this, $"Price for {items.Count} item(s) (empty = use the category price):", false, cur?.ToString() ?? "");
+        if (ans == null) return;
+        int? price = null;
+        if (!string.IsNullOrWhiteSpace(ans))
+        {
+            if (!int.TryParse(ans.Trim(), out var v) || v < 0) { StatusText.Text = "Price must be a whole number ≥ 0."; return; }
+            price = v;
+        }
+        foreach (var i in items) Prices.SetItem(i.FilePath, price);
+        StatusText.Text = price == null ? "Per-item price cleared." : $"Price {price} set for {items.Count} item(s).";
     }
 
     private async void Send_Click(object sender, RoutedEventArgs e)

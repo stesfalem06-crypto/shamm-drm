@@ -54,7 +54,7 @@ public class SettlementExporter
 
     private List<LedgerEntry> GetUnsettledEntries()
     {
-        return _ledger.GetRecentTransfers(int.MaxValue).Where(e => !e.Settled).ToList();
+        return _ledger.GetRecentTransfers(int.MaxValue).Where(e => !e.Settled && e.Kind == "protected").ToList();
     }
 
     private record SettlementAckDto(string ShopName, DateTime SettledAtUtc, List<int> SettledEntryIds, int TotalTokensSettled);

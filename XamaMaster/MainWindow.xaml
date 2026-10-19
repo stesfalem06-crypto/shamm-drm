@@ -25,9 +25,14 @@
                 <TextBlock Text="  ·  encrypt &amp; price your catalog" FontSize="16" Foreground="{StaticResource TextMuted}"
                            VerticalAlignment="Center" Margin="4,4,0,0"/>
             </StackPanel>
-            <Button Grid.Column="1" Content="Settlement…" Style="{StaticResource PrimaryButton}"
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <Button Content="Agents &amp; closings…" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"
+                        VerticalAlignment="Top" Click="OpenPlatformTools_Click"
+                        ToolTip="Create agent credentials, verify closing receipt codes, import signed closing files"/>
+                <Button Content="Settlement…" Style="{StaticResource PrimaryButton}"
                     Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
                     VerticalAlignment="Top" Click="OpenSettlement_Click"/>
+            </StackPanel>
         </Grid>
 
         <Border Grid.Row="1" Background="{StaticResource BgPanel}" CornerRadius="14" Padding="20" Margin="0,0,0,16">

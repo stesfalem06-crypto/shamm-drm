@@ -118,6 +118,12 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OpenPlatformTools_Click(object sender, RoutedEventArgs e)
+    {
+        try { Views.PlatformToolsWindow.Show(this); }
+        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Xama Master"); }
+    }
+
     private void OpenSettlement_Click(object sender, RoutedEventArgs e)
     {
         var window = new SettlementWindow { Owner = this };

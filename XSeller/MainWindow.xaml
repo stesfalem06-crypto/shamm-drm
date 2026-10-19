@@ -24,7 +24,10 @@
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
+            <Button x:Name="UserButton" Grid.Column="4" Content="👤 Default" Style="{StaticResource PrimaryButton}"
+                    Padding="12,6" Margin="10,0,0,0" Click="UserButton_Click" ToolTip="Signed-in user (switch user / log out / accounts)"/>
             <Button x:Name="PhonesToggle" Grid.Column="3" Content="📱 Phones" Style="{StaticResource PrimaryButton}"
                     Padding="12,6" Margin="10,0,0,0" Visibility="Collapsed" Click="PhonesToggle_Click"
                     ToolTip="Show / hide the phone panel"/>
@@ -39,7 +42,7 @@
             </Border>
             <Border Grid.Column="2" Background="{StaticResource BgPanel}" CornerRadius="10" Padding="14,8">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Outstanding  " Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
+                    <TextBlock Text="Owed to platform  " ToolTip="Platform share due since the last agent closing" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
                     <TextBlock x:Name="DebtText" Text="0 tokens" Foreground="{StaticResource Accent}" FontWeight="Bold" FontSize="15"/>
                 </StackPanel>
             </Border>
@@ -124,6 +127,8 @@
                                 <Separator/>
                                 <MenuItem Header="Add to send queue" InputGestureText="Enter" Click="MenuQueue_Click"/>
                                 <MenuItem Header="Send to phone" Click="MenuSend_Click"/>
+                                <Separator/>
+                                <MenuItem x:Name="SetPriceMenu" Header="Set price… (admin)" Click="MenuSetPrice_Click"/>
                             </ContextMenu>
                         </ListView.ContextMenu>
                         <ListView.View>
@@ -212,6 +217,11 @@
                         <Button Content="Import settlement" Style="{StaticResource PrimaryButton}"
                                 Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
                                 Margin="0,0,0,8" Click="ImportSettlement_Click"/>
+                        <Button Content="Closing (platform agent)…" Style="{StaticResource PrimaryButton}"
+                                Margin="0,0,0,8" Click="Closing_Click"/>
+                        <Button x:Name="AdminButton" Content="Admin dashboard…" Style="{StaticResource PrimaryButton}"
+                                Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
+                                Margin="0,0,0,8" Click="Admin_Click"/>
                         <Separator Margin="0,6,0,10" Background="#2A2A3A"/>
                         <TextBlock Text="Media folders" FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,6"/>
                         <ListBox x:Name="RootsList" Height="88" Margin="0,0,0,8"

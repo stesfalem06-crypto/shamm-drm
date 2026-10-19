@@ -96,6 +96,11 @@ public class TransferService
                     DeviceModel = ledgerModel,
                     TokenPrice = video.TokenPrice,
                     SentAtUtc = DateTime.UtcNow,
+                    UserId = Session.UserId,
+                    UserName = Session.UserName,
+                    ShopId = Session.ShopId,
+                    Kind = "protected",
+                    Category = "protected",
                 });
             }
             finally
@@ -107,6 +112,29 @@ public class TransferService
         {
             NativeCrypto.shamm_wipe(contentKey, NativeCrypto.KeyLen);
         }
+    }
+
+    /// <summary>Plain sale → ledger (attributed to the signed-in user; price from admin price settings).</summary>
+    public void RecordPlainSale(LibraryItem item, string deviceSerial, string deviceModel)
+    {
+        try
+        {
+            lock (LedgerGate) _ledger.RecordTransfer(new LedgerEntry
+            {
+                VideoId = "plain:" + Path.GetFileName(item.FilePath),
+                VideoTitle = item.Name,
+                DeviceSerial = deviceSerial,
+                DeviceModel = deviceModel,
+                TokenPrice = Prices.PriceOf(item),
+                SentAtUtc = DateTime.UtcNow,
+                UserId = Session.UserId,
+                UserName = Session.UserName,
+                ShopId = Session.ShopId,
+                Kind = "plain",
+                Category = Prices.CategoryOf(item),
+            });
+        }
+        catch (Exception ex) { AdbService.Log("record plain sale failed: " + ex.Message); }
     }
 
     /// <summary>&lt;VideoId&gt;.shammthumb next to the package, else a temp file from PosterBase64.</summary>

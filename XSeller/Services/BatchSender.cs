@@ -104,10 +104,11 @@ public sealed class BatchSender
     {
         if (!item.IsEncrypted)
         {
-            if (MtpReady(t)) { _mtp.SendPlain(t.MtpId!, localPath, frac); return; }
+            if (MtpReady(t)) { _mtp.SendPlain(t.MtpId!, localPath, frac); _transfer.RecordPlainSale(item, t.LedgerSerial, t.Model); return; }
             if (AdbReady(t))
             {
                 _transfer.SendPlain(new LibraryItem { FilePath = localPath, Title = item.Title }, new ConnectedDevice(t.AdbSerial!, t.Model, "device"));
+                _transfer.RecordPlainSale(item, t.LedgerSerial, t.Model);
                 return;
             }
             throw new IOException("Phone not ready.");
