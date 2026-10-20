@@ -29,6 +29,20 @@
         android:textStyle="bold"
         android:visibility="gone"/>
 
+    <ImageButton
+        android:id="@+id/reelBackground"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="28dp"
+        android:layout_marginEnd="8dp"
+        android:padding="12dp"
+        android:scaleType="fitCenter"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_headset"
+        app:tint="#FFFFFF"
+        android:contentDescription="Play in background"/>
+
     <ImageView
         android:id="@+id/reelCenterIcon"
         android:layout_width="72dp"

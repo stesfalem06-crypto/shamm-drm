@@ -56,6 +56,13 @@
             android:launchMode="singleTop"/>
 
         <activity
+            android:name=".ui.SessionRouterActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true"/>
+
+        <activity
             android:name=".ui.PdfViewerActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"/>

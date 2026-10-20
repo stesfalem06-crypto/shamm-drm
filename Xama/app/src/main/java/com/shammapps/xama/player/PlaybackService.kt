@@ -47,11 +47,17 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
+        // Background play of videos is audio-only: never decode the picture here.
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
+            .build()
 
         val openPlayer = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, AudioPlayerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            // Router: music -> audio player, background video -> video player at current position.
+            Intent(this, com.shammapps.xama.ui.SessionRouterActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
@@ -79,6 +85,8 @@ class PlaybackService : MediaSessionService() {
             .build()
         instance = this
     }
+
+    fun currentPlayer(): androidx.media3.common.Player? = session?.player
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 

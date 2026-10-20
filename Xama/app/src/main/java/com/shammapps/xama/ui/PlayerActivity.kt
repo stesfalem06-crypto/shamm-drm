@@ -79,6 +79,7 @@ import com.shammapps.xama.data.LibraryCache
 import com.shammapps.xama.data.LocalVideo
 import com.shammapps.xama.data.PlaybackPositions
 import com.shammapps.xama.data.WatchHistory
+import com.shammapps.xama.player.BackgroundPlay
 import com.shammapps.xama.player.ShammDataSource
 import com.shammapps.xama.security.SecurityGuard
 import java.io.File
@@ -101,6 +102,7 @@ class PlayerActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_PLAYLIST_IDS = "playlist_ids"
+        const val EXTRA_START_POSITION = "start_position"
         private const val ACTION_PIP_CONTROL = "com.shammapps.xama.PIP_CONTROL"
         private const val EXTRA_PIP_CMD = "cmd"
         private const val CMD_PLAY_PAUSE = 1
@@ -335,7 +337,8 @@ class PlayerActivity : AppCompatActivity() {
             if (r - l != or - ol || b - t != ob - ot) root.post { applyAspect() }
         }
 
-        loadItem(index, initial = true)
+        val startPos = intent.getLongExtra(EXTRA_START_POSITION, -1L)
+        loadItem(index, initial = true, startPositionMs = if (startPos >= 0) startPos else null)
         showControls()
         handler.post(progressRunnable)
     }
@@ -350,7 +353,31 @@ class PlayerActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         savePosition()
+        // "Continue in background when leaving the app" (plain videos only).
+        if (!handedOff && !isFinishing && !isChangingConfigurations && !isInPipCompat() &&
+            player?.isPlaying == true && BackgroundPlay.continueOnLeave(this) && BackgroundPlay.isAllowed(current)
+        ) {
+            goBackground(userInitiated = false)
+        }
         player?.pause()
+    }
+
+    private var handedOff = false
+
+    /** MX-style background play: hand the current video's audio to PlaybackService and close the video UI. */
+    private fun goBackground(userInitiated: Boolean) {
+        val item = current
+        if (!BackgroundPlay.isAllowed(item)) {
+            if (userInitiated) BackgroundPlay.refuseToast(this)
+            return
+        }
+        val pos = player?.currentPosition ?: 0L
+        savePosition()
+        handedOff = true
+        player?.pause()
+        BackgroundPlay.start(this, playlist, index, pos) {
+            if (!isFinishing) finish()
+        }
     }
 
     override fun onDestroy() {
@@ -368,6 +395,7 @@ class PlayerActivity : AppCompatActivity() {
         super.onUserLeaveHint()
         // Android 12+ auto-enters via setAutoEnterEnabled; older versions enter here.
         if (Build.VERSION.SDK_INT in Build.VERSION_CODES.O until Build.VERSION_CODES.S &&
+            !(BackgroundPlay.continueOnLeave(this) && BackgroundPlay.isAllowed(current)) &&
             player?.isPlaying == true && errorView.visibility != View.VISIBLE
         ) {
             enterPip(silent = true)
@@ -492,6 +520,7 @@ class PlayerActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnRotate).setOnLongClickListener { showRotationSheet(); true }
         btnPip.setOnClickListener { enterPip(silent = false) }
         btnAudioTrack.setOnClickListener { showAudioTrackSheet() }
+        findViewById<View>(R.id.btnBackgroundPlay).setOnClickListener { goBackground(userInitiated = true) }
         btnSubtitles.setOnClickListener { showSubtitleSheet() }
         findViewById<View>(R.id.btnMore).setOnClickListener { showMoreSheet() }
         btnUnlock.setOnClickListener { setLocked(false) }
@@ -726,6 +755,7 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun bindTitle(item: LocalVideo) {
         titleText.text = item.title
+        findViewById<View>(R.id.btnBackgroundPlay)?.alpha = if (BackgroundPlay.isAllowed(item)) 1f else 0.4f
         subtitleText.text = buildString {
             if (item.isEncrypted) append("Protected") else append(item.folderName.takeIf { it.isNotBlank() && it != "Other" } ?: "Video")
             if (playlist.size > 1) append(" · ${index + 1} of ${playlist.size}")
@@ -1504,7 +1534,9 @@ class PlayerActivity : AppCompatActivity() {
                 )
             )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setAutoEnterEnabled(player?.isPlaying == true)
+            builder.setAutoEnterEnabled(
+                player?.isPlaying == true && !(BackgroundPlay.continueOnLeave(this) && BackgroundPlay.isAllowed(current))
+            )
             builder.setSeamlessResizeEnabled(true)
         }
         return builder.build()

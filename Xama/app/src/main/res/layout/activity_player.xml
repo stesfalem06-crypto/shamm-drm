@@ -158,8 +158,10 @@
 
             <ImageButton android:id="@+id/btnSubtitles" style="@style/PlayerIconButton"
                 android:src="@drawable/ic_subtitles" android:contentDescription="Subtitles"/>
+            <ImageButton android:id="@+id/btnBackgroundPlay" style="@style/PlayerIconButton"
+                android:src="@drawable/ic_headset" android:contentDescription="Play in background"/>
             <ImageButton android:id="@+id/btnAudioTrack" style="@style/PlayerIconButton"
-                android:src="@drawable/ic_headset" android:contentDescription="Audio track"/>
+                android:src="@drawable/ic_music" android:contentDescription="Audio track"/>
             <ImageButton android:id="@+id/btnMore" style="@style/PlayerIconButton"
                 android:src="@drawable/ic_more_vert" android:contentDescription="More options"/>
         </LinearLayout>

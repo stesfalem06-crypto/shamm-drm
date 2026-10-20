@@ -28,6 +28,8 @@ import java.io.File
 class ReelsAdapter(
     private val videos: List<LocalVideo>,
     private val keyResolver: ShammKeyResolver,
+    /** Headphones button: (position, currentPositionMs) -> hand off to background audio. */
+    private val onBackground: (Int, Long) -> Unit = { _, _ -> },
 ) : RecyclerView.Adapter<ReelsAdapter.ReelHolder>() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -106,6 +108,13 @@ class ReelsAdapter(
         else
             "Double-tap sides to seek · End of feed"
         holder.seek.progress = 0
+        holder.itemView.findViewById<View>(R.id.reelBackground).apply {
+            alpha = if (com.shammapps.xama.player.BackgroundPlay.isAllowed(video)) 1f else 0.4f
+            setOnClickListener {
+                val pos = holder.bindingAdapterPosition
+                if (pos != RecyclerView.NO_POSITION) onBackground(pos, holder.player?.currentPosition ?: 0L)
+            }
+        }
         holder.timePos.text = "0:00"
         holder.timeDur.text = if (video.durationMs > 0) Ui.formatDuration(video.durationMs) else "0:00"
         holder.centerIcon.animate().cancel()

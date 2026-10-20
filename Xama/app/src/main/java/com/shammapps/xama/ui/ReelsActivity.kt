@@ -63,7 +63,16 @@ class ReelsActivity : AppCompatActivity() {
         }
 
         val resolver = ShammKeyResolver(this)
-        adapter = ReelsAdapter(videos, resolver)
+        adapter = ReelsAdapter(videos, resolver) { pos, positionMs ->
+            val v = videos.getOrNull(pos)
+            if (!com.shammapps.xama.player.BackgroundPlay.isAllowed(v)) {
+                com.shammapps.xama.player.BackgroundPlay.refuseToast(this)
+            } else {
+                val rv = recycler()?.findViewHolderForAdapterPosition(pos)
+                if (rv is ReelsAdapter.ReelHolder) adapter.setPlaying(rv, false)
+                com.shammapps.xama.player.BackgroundPlay.start(this, videos, pos, positionMs) { finish() }
+            }
+        }
 
         pager = findViewById(R.id.reelsPager)
         pager.offscreenPageLimit = 1 // only keep neighbors — major memory win

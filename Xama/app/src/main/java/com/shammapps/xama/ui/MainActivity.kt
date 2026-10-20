@@ -91,15 +91,17 @@ class MainActivity : AppCompatActivity() {
     /** Per-screen List / Thumbnails choice for video lists. */
     private fun videoScreenKey(): String = when {
         tab == Tab.PROTECTED -> "protected"
-        tab == Tab.REELS -> "reels"
+        tab == Tab.REELS -> if (openReelsFolder != null) "reels_folder" else "reels"
         openFolder != null -> "folder"
         else -> "search"
     }
     private fun cardsFor(key: String = videoScreenKey()) = prefs.getBoolean("cards_$key", false)
     private fun isVideoListScreen(): Boolean =
-        tab == Tab.PROTECTED || (tab == Tab.REELS && !reelsByFolder) ||
+        tab == Tab.PROTECTED || (tab == Tab.REELS && (!reelsByFolder || openReelsFolder != null)) ||
             (tab == Tab.VIDEOS && (openFolder != null || query.isNotEmpty()))
     private var reelsByFolder = false
+    /** Drilled-in Reels folder (Reels > Folders > folder). */
+    private var openReelsFolder: VideoFolder? = null
     private var musicByFolder = false
     private var pendingFolderName: String? = null
     private var gridMode = false
@@ -160,8 +162,13 @@ class MainActivity : AppCompatActivity() {
             override fun handleOnBackPressed() {
                 when {
                     searchOpen -> closeSearch()
+                    openReelsFolder != null -> {
+                        openReelsFolder = null
+                        render(animate = true)
+                    }
                     openMusicFolder != null -> {
                         openMusicFolder = null
+        openReelsFolder = null
                         render(animate = true)
                     }
                     openFolder != null -> {
@@ -200,6 +207,11 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.modeFolders).setOnClickListener { setByFolder(true) }
         findViewById<View>(R.id.modePlay).setOnClickListener { openReels(reelsFeed(videos), null) }
         findViewById<View>(R.id.rowScanAll).setOnClickListener { toggleScanAll() }
+        findViewById<View>(R.id.rowBgContinue).setOnClickListener {
+            val on = !com.shammapps.xama.player.BackgroundPlay.continueOnLeave(this)
+            com.shammapps.xama.player.BackgroundPlay.setContinueOnLeave(this, on)
+            bindBgSetting()
+        }
         findViewById<View>(R.id.navMusic).setOnClickListener { switchTab(Tab.MUSIC) }
         findViewById<View>(R.id.navProtected).setOnClickListener { switchTab(Tab.PROTECTED) }
         findViewById<View>(R.id.navProfile).setOnClickListener { switchTab(Tab.PROFILE) }
@@ -349,6 +361,7 @@ class MainActivity : AppCompatActivity() {
             .map { (name, list) -> VideoFolder(name, list.size, list) }
             .sortedBy { it.name.lowercase() }
         openMusicFolder = openMusicFolder?.let { f -> musicFolders.find { it.name == f.name } }
+        openReelsFolder = openReelsFolder?.let { f -> reelsFolders().find { it.name == f.name } }
         openFolder = openFolder?.let { f -> folders.find { it.name == f.name } }
         pendingFolderName?.let { name ->
             openFolder = folders.find { it.name == name }
@@ -399,7 +412,7 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.btnSort).visibility = if (inList && !searchOpen) View.VISIBLE else View.GONE
         findViewById<View>(R.id.btnBackFolder).visibility =
-            if ((openFolder != null || openMusicFolder != null) && !searchOpen) View.VISIBLE else View.GONE
+            if ((openFolder != null || openMusicFolder != null || openReelsFolder != null) && !searchOpen) View.VISIBLE else View.GONE
         findViewById<EditText>(R.id.searchInput).hint = when {
             tab == Tab.MUSIC -> "Search music"
             openFolder != null -> "Search in ${openFolder?.name}"
@@ -408,7 +421,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun switchTab(t: Tab) {
-        if (t == tab && openFolder == null && openMusicFolder == null) {
+        if (t == tab && openFolder == null && openMusicFolder == null && openReelsFolder == null) {
             findViewById<RecyclerView>(R.id.contentList).smoothScrollToPosition(0)
             return
         }
@@ -578,22 +591,34 @@ class MainActivity : AppCompatActivity() {
                 showVideos(list, sortVideos((videos + docs).filter { it.isEncrypted && matches(it) }), watched, animate)
             }
             Tab.REELS -> {
-                header.text = "Reels"
-                if (reelsByFolder && query.isEmpty()) {
-                    val fl = sortFolders(folders)
-                    if (fl.isEmpty()) showEmpty(emptyFor(Tab.VIDEOS)) else {
+                val rf = openReelsFolder
+                header.text = rf?.name ?: "Reels"
+                if (rf == null && reelsByFolder && query.isEmpty()) {
+                    // Only folders that contain vertical videos.
+                    val fl = sortFolders(reelsFolders())
+                    if (fl.isEmpty()) showEmpty(reelsEmpty()) else {
                         list.visibility = View.VISIBLE
                         list.layoutManager = if (gridMode) GridLayoutManager(this, gridSpan()) else LinearLayoutManager(this)
-                        // Tapping a folder plays that folder as a swipe feed.
-                        list.adapter = MxFolderAdapter(fl, gridMode, watched) { f -> openReels(reelsFeed(f.videos), null) }
+                        // Tap opens the folder's vertical videos; nothing auto-plays.
+                        list.adapter = MxFolderAdapter(fl, gridMode, watched) { f ->
+                            openReelsFolder = f
+                            render(animate = true)
+                        }
                         if (animate) animateList(list)
                     }
                 } else {
-                    val feed = reelsFeed(videos.filter { matches(it) })
-                    if (feed.isEmpty()) showEmpty(emptyFor(Tab.VIDEOS)) else {
+                    val source = rf?.videos ?: videos
+                    val feed = reelsFeed(source.filter { matches(it) })
+                    if (feed.isEmpty()) showEmpty(reelsEmpty()) else {
+                        if (rf != null) {
+                            sub.visibility = View.VISIBLE
+                            sub.text = if (feed.size == 1) "1 reel" else "${feed.size} reels"
+                        }
                         list.visibility = View.VISIBLE
-                        val cards = cardsFor("reels")
+                        val key = if (rf != null) "reels_folder" else "reels"
+                        val cards = cardsFor(key)
                         list.layoutManager = if (cards) GridLayoutManager(this, cardSpan()) else LinearLayoutManager(this)
+                        // Feed starts at the tapped video; swiping stays within this list (folder).
                         list.adapter = MxVideoAdapter(feed, cards, watched) { v -> openReels(feed, v) }
                         if (animate) animateList(list)
                     }
@@ -635,6 +660,7 @@ class MainActivity : AppCompatActivity() {
                 findViewById<TextView>(R.id.statProtected).text = (videos.count { it.isEncrypted } + docs.size).toString()
                 findViewById<TextView>(R.id.statFolders).text = folders.size.toString()
                 bindScanAll()
+                bindBgSetting()
                 if (animate) profile.startAnimation(AnimationUtils.loadAnimation(this, R.anim.item_fade_up))
             }
         }
@@ -718,10 +744,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Feed order: portrait videos first, then the rest. */
-    private fun reelsFeed(source: List<LocalVideo>): List<LocalVideo> {
-        val v = source.filter { !it.isAudio }
-        return (v.filter { it.isVertical } + v.filter { !it.isVertical }).take(300)
+    /** Reels = vertical (portrait) videos only. */
+    private fun reelsFeed(source: List<LocalVideo>): List<LocalVideo> =
+        source.filter { !it.isAudio && !it.isPdf && it.isVertical }.take(500)
+
+    private fun reelsFolders(): List<VideoFolder> = folders.mapNotNull { f ->
+        val v = f.videos.filter { it.isVertical && !it.isAudio && !it.isPdf }
+        if (v.isEmpty()) null else VideoFolder(f.name, v.size, v)
     }
+
+    private fun reelsEmpty() = Empty(
+        R.drawable.ic_reels, if (query.isNotEmpty()) "No results" else "No reels yet",
+        if (query.isNotEmpty()) "No vertical videos match “$query”." else "Vertical (portrait) videos on this phone will appear here.",
+        "Refresh"
+    ) { reloadAsync(force = true) }
 
     /** TikTok-style vertical swipe feed over [feed], starting at [start]. */
     private fun openReels(feed: List<LocalVideo>, start: LocalVideo?) {
@@ -738,7 +774,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateModeBar() {
         val bar = findViewById<View>(R.id.modeBar)
-        val show = (tab == Tab.REELS || (tab == Tab.MUSIC && openMusicFolder == null)) && !searchOpen
+        val show = ((tab == Tab.REELS && openReelsFolder == null) || (tab == Tab.MUSIC && openMusicFolder == null)) && !searchOpen
         bar.visibility = if (show) View.VISIBLE else View.GONE
         if (!show) return
         val byFolder = if (tab == Tab.REELS) reelsByFolder else musicByFolder
@@ -755,6 +791,7 @@ class MainActivity : AppCompatActivity() {
     private fun setByFolder(value: Boolean) {
         if (tab == Tab.REELS) {
             reelsByFolder = value
+            openReelsFolder = null
             prefs.edit().putBoolean("reels_by_folder", value).apply()
         } else {
             musicByFolder = value
@@ -765,6 +802,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------------------------------------------------------------- scan all folders
+
+    private fun bindBgSetting() {
+        val on = com.shammapps.xama.player.BackgroundPlay.continueOnLeave(this)
+        findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.bgContinueSwitch).isChecked = on
+        findViewById<TextView>(R.id.bgContinueValue).text =
+            if (on) "On · videos keep playing as audio when you leave Xama" else "Off · video pauses when you leave"
+    }
 
     private fun bindScanAll() {
         val on = com.shammapps.xama.storage.XamaStorage.scanAllEnabled(this)

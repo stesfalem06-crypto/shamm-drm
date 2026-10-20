@@ -236,6 +236,8 @@ class VideoRepository(private val context: Context) {
             MediaStore.Video.Media.SIZE,
             MediaStore.Video.Media.DATE_ADDED,
         )
+        // Rotation metadata (e.g. phone videos stored landscape with 90°): API 29+.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) cols.add(MediaStore.Video.Media.ORIENTATION)
         // Avoid DATA column on modern Android (slow / restricted)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) cols.add(MediaStore.Video.Media.DATA)
         val sort = "${MediaStore.Video.Media.DATE_ADDED} DESC"
@@ -249,6 +251,8 @@ class VideoRepository(private val context: Context) {
                 val bucketCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
                 val sizeCol = cursor.getColumnIndex(MediaStore.Video.Media.SIZE)
                 val dateCol = cursor.getColumnIndex(MediaStore.Video.Media.DATE_ADDED)
+                val rotCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                    cursor.getColumnIndex(MediaStore.Video.Media.ORIENTATION) else -1
                 val dataCol = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q)
                     cursor.getColumnIndex(MediaStore.Video.Media.DATA) else -1
 
@@ -257,8 +261,12 @@ class VideoRepository(private val context: Context) {
                     val name = cursor.getString(nameCol) ?: "Video"
                     val durationMs = cursor.getLong(durCol)
                     if (durationMs in 1 until 500) continue
-                    val width = cursor.getInt(wCol)
-                    val height = cursor.getInt(hCol)
+                    val rawW = cursor.getInt(wCol)
+                    val rawH = cursor.getInt(hCol)
+                    val rot = if (rotCol >= 0) cursor.getInt(rotCol) else 0
+                    val swap = rot == 90 || rot == 270
+                    val width = if (swap) rawH else rawW
+                    val height = if (swap) rawW else rawH
                     val bucket = cursor.getString(bucketCol)?.takeIf { it.isNotBlank() } ?: "Other"
                     val path = if (dataCol >= 0) try { cursor.getString(dataCol) ?: "" } catch (_: Exception) { "" } else ""
                     val contentUri = ContentUris.withAppendedId(
