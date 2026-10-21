@@ -23,12 +23,13 @@ public class LedgerDatabase
     private readonly string _dbPath;
     private readonly string _connString;
 
+    public static string DefaultPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XSeller", "ledger.db");
+
     public LedgerDatabase()
     {
-        var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "XSeller");
-        Directory.CreateDirectory(dir);
-        _dbPath = Path.Combine(dir, "ledger.db");
+        Directory.CreateDirectory(Path.GetDirectoryName(DefaultPath)!);
+        _dbPath = DefaultPath;
         _connString = $"Data Source={_dbPath}";
         EnsureSchema();
     }
@@ -135,6 +136,7 @@ public class LedgerDatabase
         cmd.ExecuteNonQuery();
         LedgerChain.SealLast(conn);
         tx.Commit();
+        BackupService.Schedule();
         LedgerChain.NoteTime(entry.SentAtUtc);
         try
         {

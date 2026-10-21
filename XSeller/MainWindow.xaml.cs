@@ -40,6 +40,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Accounts.Init(_ledger);
+        BackupService.LogRestoreIfAny(_ledger);
+        BackupService.StartPeriodic();
         _closings = new Closings(_ledger);
         _passes = new Passes(_ledger);
         _passes.Changed += () => Dispatcher.BeginInvoke(() => { UpdatePassBadges(); RefreshDebt(); });

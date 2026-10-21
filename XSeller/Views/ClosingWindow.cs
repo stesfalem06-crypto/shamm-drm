@@ -26,6 +26,10 @@ public static class ClosingWindow
         root.Children.Add(Ui.Text($"Closing #{pending.Number}", 20, bold: true));
         root.Children.Add(Ui.Text($"{shopName}  ·  shop code {pending.ShopCode}", fg: Ui.Muted));
         foreach (var w in warnings) root.Children.Add(Ui.Text("⚠ " + w, bold: true, fg: Ui.Warn));
+        var bak = BackupService.GetHealth();
+        root.Children.Add(Ui.Text("Backups: " + bak.Summary, fg: bak.AnyOk ? Ui.Good : Ui.Warn));
+        if (!string.IsNullOrEmpty(BackupService.LastStartupMessage))
+            root.Children.Add(Ui.Text("Startup: " + BackupService.LastStartupMessage, fg: Ui.Muted));
         root.Children.Add(Ui.Text($"Period: {pending.PeriodStartUtc.ToLocalTime():yyyy-MM-dd HH:mm} → now  ·  {pending.SalesCount} sale(s)"));
 
         var summary = new Grid { Margin = new Thickness(0, 6, 0, 10) };
@@ -49,6 +53,16 @@ public static class ClosingWindow
         emp.ItemsSource = pending.Employees;
         emp.MaxHeight = 220;
         root.Children.Add(emp);
+
+        var div = Dividends.Build(ledger, pending.PeriodStartUtc, pending.PeriodEndUtc);
+        root.Children.Add(Ui.Text("Movie dividends (this period)", 15, true));
+        foreach (var line in Dividends.SummaryLines(div).Skip(1)) root.Children.Add(Ui.Text(line, fg: Ui.Muted));
+        var dgrid = Ui.Table(("Title", "Title"), ("Transfers", "Transfers"), ("Share of revenue", "ShareOfRevenue"),
+            ("Movie payout", "MoviePayout"), ("Platform kept", "PlatformKept"));
+        dgrid.ItemsSource = div.Movies.Take(30).ToList();
+        dgrid.MaxHeight = 180;
+        root.Children.Add(dgrid);
+        if (div.Movies.Count > 30) root.Children.Add(Ui.Text($"(showing top 30 of {div.Movies.Count} — full list in Admin → Movie dividends / CSV export)", fg: Ui.Muted));
 
         var agents = closings.Agents();
         if (agents.Count == 0)

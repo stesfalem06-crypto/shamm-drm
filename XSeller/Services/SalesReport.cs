@@ -41,6 +41,7 @@ public sealed class SalesReportData
     public decimal PlatformDueNow { get; set; }
     public int LastClosingNumber { get; set; }
     public List<string> IntegrityWarnings { get; set; } = new();
+    public Dividends.Report? Dividends { get; set; }
 }
 
 /// <summary>Builds the admin dashboard numbers and the CSV / PDF / signed exports.</summary>
@@ -57,6 +58,7 @@ public static class SalesReport
             r.PlatformDueNow = closings.Pending(shopName).PlatformDue;
             r.IntegrityWarnings = Integrity.Warnings(ledger, closings);
         }
+        r.Dividends = Dividends.Build(ledger, fromUtc, toUtc);
         return r;
     }
 
@@ -87,6 +89,7 @@ public static class SalesReport
                 .OrderByDescending(t => t.Revenue).ThenByDescending(t => t.Count).ToList(),
             Total = Sum("total", "TOTAL", sales),
             Sales = sales,
+            Dividends = Dividends.Build(ledger, fromUtc, toUtc),
         };
     }
 
@@ -111,6 +114,11 @@ public static class SalesReport
         foreach (var c in r.Closings)
             sb.AppendLine($"{c.Number},{c.ClosedAtUtc:O},{Q(c.AgentName)},{c.SalesCount},{M(c.Revenue)},{M(c.PlatformDue)},{M(c.AmountReceived)},{c.ReceiptCode},{c.RecordHash}");
         sb.AppendLine();
+        if (r.Dividends != null)
+        {
+            sb.AppendLine();
+            sb.Append(Dividends.ToCsv(r.Dividends));
+        }
         sb.AppendLine("SaleId,TimeUtc,User,UserId,ShopId,Kind,Category,Item,ItemId,Price,DeviceModel,DeviceSerial,Settled");
         foreach (var s in r.Sales)
             sb.AppendLine($"{s.Id},{s.SentAtUtc:O},{Q(s.UserName)},{s.UserId},{s.ShopId},{s.Kind},{s.Category},{Q(s.VideoTitle)},{Q(s.VideoId)},{s.TokenPrice},{Q(s.DeviceModel)},{Q(s.DeviceSerial)},{(s.Settled ? 1 : 0)}");
@@ -166,6 +174,14 @@ public static class SalesReport
         foreach (var t in r.PerItem) lines.Add(Row(t.Label, t.Count, t.Revenue, t.Platform, t.Shop, t.Employee));
         lines.Add("");
         lines.Add($"OWED TO PLATFORM SINCE LAST CLOSING (#{r.LastClosingNumber}): {M(r.PlatformDueNow)}");
+        if (r.Dividends != null)
+        {
+            lines.Add("");
+            foreach (var line in Dividends.SummaryLines(r.Dividends)) lines.Add(line);
+            lines.Add($"{"Title",-40} {"Xfers",6} {"Share",12} {"Movie pay",12} {"Platform",12}");
+            foreach (var m in r.Dividends.Movies.Take(40))
+                lines.Add($"{Trim(m.Title, 40),-40} {m.Transfers,6} {M(m.ShareOfRevenue),12} {M(m.MoviePayout),12} {M(m.PlatformKept),12}");
+        }
         foreach (var w in r.IntegrityWarnings) lines.Add("WARNING: " + Trim(w, 110));
         lines.Add("");
         lines.Add("CLOSINGS (agent settlements) IN PERIOD");

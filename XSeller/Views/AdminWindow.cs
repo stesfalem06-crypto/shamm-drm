@@ -16,6 +16,8 @@ public static class AdminWindow
         win.Content = tabs;
         tabs.Items.Add(new TabItem { Header = "Dashboard", Content = Dashboard(win, ledger, closings, shopName) });
         tabs.Items.Add(new TabItem { Header = "Closings", Content = ClosingsTab(win, ledger, closings, shopName, changed) });
+        tabs.Items.Add(new TabItem { Header = "Movie dividends", Content = DividendsTab(win, ledger) });
+        tabs.Items.Add(new TabItem { Header = "Backups", Content = BackupsTab() });
         tabs.Items.Add(new TabItem { Header = "Employees", Content = Employees(win, changed) });
         tabs.Items.Add(new TabItem { Header = "Prices", Content = PricesTab(win) });
         win.ShowDialog();
@@ -83,6 +85,10 @@ public static class AdminWindow
             foreach (var p in problems) status.Children.Add(Ui.Text("⚠ " + p, bold: true, fg: Ui.Warn));
             var agents = closings.Agents();
             status.Children.Add(Ui.Text(agents.Count == 0 ? "No platform agent registered yet." : "Agents: " + string.Join(", ", agents.Select(a => $"{a.AgentName} ({a.AgentId})")), fg: Ui.Muted));
+            var bak = BackupService.GetHealth();
+            status.Children.Add(Ui.Text("Backups: " + bak.Summary, fg: bak.AnyOk ? Ui.Good : Ui.Warn));
+            if (!string.IsNullOrEmpty(BackupService.LastStartupMessage))
+                status.Children.Add(Ui.Text("Startup: " + BackupService.LastStartupMessage, fg: Ui.Muted));
         }
         grid.SelectionChanged += (_, _) => { if (grid.SelectedItem is ClosingRecord r) ClosingWindow.ShowReceipt(win, receipt, closings, r); };
         Reload();
@@ -168,7 +174,76 @@ public static class AdminWindow
         return Ui.Scroll(panel);
     }
 
-    public static string? Prompt(Window owner, string question, bool secret = false, string initial = "")
+    
+    private static UIElement DividendsTab(Window win, LedgerDatabase ledger)
+    {
+        var today = DateTime.Today;
+        var from = new DatePicker { SelectedDate = new DateTime(today.Year, today.Month, 1), Width = 140, Margin = new Thickness(0, 0, 8, 0) };
+        var to = new DatePicker { SelectedDate = today, Width = 140, Margin = new Thickness(0, 0, 8, 0) };
+        var pctBox = new TextBox { Text = Dividends.MoviePercentOfPlatform.ToString(), Width = 60, Padding = new Thickness(4), Margin = new Thickness(0, 0, 8, 0) };
+        var summary = new StackPanel();
+        var grid = Ui.Table(("Title", "Title"), ("Pass xfers", "PassTransfers"), ("Paid xfers", "PaidTransfers"),
+            ("Transfers", "Transfers"), ("Paid revenue", "PaidRevenue"), ("Pass share", "PassAllocated"),
+            ("Share of revenue", "ShareOfRevenue"), ("Movie payout", "MoviePayout"), ("Platform kept", "PlatformKept"));
+        grid.MaxHeight = 420;
+        Dividends.Report? data = null;
+        void Reload()
+        {
+            if (int.TryParse(pctBox.Text.Trim(), out var v) && v >= 0 && v <= 100) Dividends.MoviePercentOfPlatform = v;
+            else pctBox.Text = Dividends.MoviePercentOfPlatform.ToString();
+            var f = (from.SelectedDate ?? today).Date;
+            var t = (to.SelectedDate ?? today).Date.AddDays(1);
+            data = Dividends.Build(ledger, f.ToUniversalTime(), t.ToUniversalTime());
+            grid.ItemsSource = data.Movies;
+            summary.Children.Clear();
+            foreach (var line in Dividends.SummaryLines(data)) summary.Children.Add(Ui.Text(line));
+        }
+        from.SelectedDateChanged += (_, _) => Reload();
+        to.SelectedDateChanged += (_, _) => Reload();
+        string Stamp() => $"{(from.SelectedDate ?? today):yyyyMMdd}-{(to.SelectedDate ?? today):yyyyMMdd}";
+        var panel = Ui.Stack(
+            Ui.Text("Movie dividends", 16, true),
+            Ui.Text("Pass revenue is split across movies by how many times each was transferred under a pass. " +
+                    "Each movie's royalty is taken from the platform's share (shop and employee shares stay the same). " +
+                    "Normally-priced protected sales for the movie are included in its share of revenue.", fg: Ui.Muted),
+            Ui.Row(new TextBlock { Text = "From ", VerticalAlignment = VerticalAlignment.Center }, from,
+                   new TextBlock { Text = "To ", VerticalAlignment = VerticalAlignment.Center }, to,
+                   new TextBlock { Text = "Movie % of platform ", VerticalAlignment = VerticalAlignment.Center }, pctBox,
+                   Ui.Button("Apply / refresh", (_, _) => Reload()),
+                   Ui.Button("Export CSV…", (_, _) => ClosingWindow.SaveBytes(win, $"dividends-{Stamp()}.csv", "CSV (*.csv)|*.csv",
+                       System.Text.Encoding.UTF8.GetBytes(Dividends.ToCsv(data!))))),
+            summary, grid);
+        Reload();
+        return Ui.Scroll(panel);
+    }
+
+    private static UIElement BackupsTab()
+    {
+        var summary = Ui.Text("", 14, true);
+        var startup = Ui.Text("", fg: Ui.Muted);
+        var grid = Ui.Table(("Location", "Label"), ("Status", "Status"), ("Age", "Age"), ("Size", "SizeLabel"), ("Note", "Note"));
+        grid.MaxHeight = 260;
+        void Reload()
+        {
+            var h = BackupService.GetHealth();
+            summary.Text = h.Summary;
+            summary.Foreground = h.AnyOk ? Ui.Good : Ui.Warn;
+            startup.Text = string.IsNullOrEmpty(BackupService.LastStartupMessage) ? "" : "Startup: " + BackupService.LastStartupMessage;
+            grid.ItemsSource = h.Slots;
+        }
+        Reload();
+        return Ui.Scroll(Ui.Stack(
+            Ui.Text("Hidden encrypted database backups", 16, true),
+            Ui.Text("Copies of the ledger (sales, closings, passes, accounts) are kept encrypted in hidden folders " +
+                    "(ProgramData, another local drive when present, AppData Local). Updated after each sale / closing / pass change " +
+                    "and every 30 minutes. On startup, if the main DB is missing, older, or its hash chain is broken, " +
+                    "the newest valid backup is restored automatically. Backups cannot be cleared from X Seller.", fg: Ui.Muted),
+            summary, startup, grid,
+            Ui.Row(Ui.Button("Refresh", (_, _) => Reload()),
+                   Ui.Button("Back up now", (_, _) => { BackupService.Run(); Reload(); }))));
+    }
+
+public static string? Prompt(Window owner, string question, bool secret = false, string initial = "")
     {
         var win = Ui.Dialog("X Seller", 420, 200, owner);
         win.ResizeMode = ResizeMode.NoResize;

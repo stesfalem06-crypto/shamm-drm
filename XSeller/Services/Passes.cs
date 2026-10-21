@@ -169,7 +169,7 @@ public sealed class Passes
             tx.Commit();
         }
         Ledger("weekly-pass", "Weekly pass (7 days)", id, $"{model} · pass #{passId}", price, "pass");
-        Reload(); Changed?.Invoke();
+        Reload(); Changed?.Invoke(); BackupService.Schedule();
         return All().First(p => p.Id == passId);
     }
 
@@ -196,7 +196,7 @@ public sealed class Passes
         if (pass.ActivePhones.Count() >= MaxPhones) throw new InvalidOperationException($"A pass covers at most {MaxPhones} phones — remove or swap one first.");
         using (var c = Open()) AddPhoneRow(c, passId, id, model);
         Ledger("weekly-pass-event", $"Pass #{passId}: phone added", id, model, 0, "pass-event");
-        Reload(); Changed?.Invoke();
+        Reload(); Changed?.Invoke(); BackupService.Schedule();
     }
 
     public void RemovePhone(long passId, string deviceId, bool isSwap = false)
@@ -217,7 +217,7 @@ public sealed class Passes
         }
         if (!isSwap) Ledger("weekly-pass-event", $"Pass #{passId}: phone removed", id, model, 0, "pass-event");
         else Ledger("weekly-pass-event", $"Pass #{passId}: phone swapped out", id, model, 0, "pass-event");
-        Reload(); Changed?.Invoke();
+        Reload(); Changed?.Invoke(); BackupService.Schedule();
     }
 
     /// <summary>Replace one phone with another (limited to MaxSwaps per pass, logged).</summary>
@@ -238,7 +238,7 @@ public sealed class Passes
             cmd.ExecuteNonQuery();
         }
         Ledger("weekly-pass-event", $"Pass #{passId}: phone swapped in", newId, newModel, 0, "pass-event");
-        Reload(); Changed?.Invoke();
+        Reload(); Changed?.Invoke(); BackupService.Schedule();
     }
 
     // ---------------- phone-side display file (Xama shows it; enforcement stays on this PC) ----------------

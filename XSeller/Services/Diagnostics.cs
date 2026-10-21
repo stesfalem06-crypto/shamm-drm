@@ -25,6 +25,9 @@ public static class Diagnostics
         sb.AppendLine($"adb status: {adb.LastStatus}");
         sb.AppendLine($"Drivers bundled: {DriverInstaller.Bundled} ({DriverInstaller.DriversDir}) installed: {DriverInstaller.Installed}");
 
+        H("Database backups (encrypted, multi-location)");
+        sb.AppendLine(Try(BackupService.DiagnosticsText));
+
         H("MTP / Windows Portable Devices (primary path)");
         sb.AppendLine(mtp == null ? "(n/a)" : Try(mtp.DiagnosticsText));
 

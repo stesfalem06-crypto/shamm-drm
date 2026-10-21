@@ -40,3 +40,9 @@ Warnings appear in the admin dashboard, the closing screen and the status bar at
 
 ## Weekly passes in closings
 Weekly pass activations are ledger sales (`Kind=pass`, price from Admin → Prices) attributed to the employee who sold them, so they are included in “owed since last closing”, the closing totals and the 50/40/10 split. Protected transfers covered by a pass are recorded at price 0 (`Kind=pass-use`) and pass add/remove/swap events at price 0 (`Kind=pass-event`), so they are counted as sales lines but add no revenue. See WEEKLY_PASS.md.
+
+## Movie dividends
+Of the platform's share of revenue (default 50%), a configurable cut (default **40% of that share** → 20% of total revenue) is paid out to movies in proportion to their transfers in the period. Pass activations supply the pass-revenue pool (allocated by `pass-use` count per movie); normally-priced protected sales (`Kind=protected`) add their own revenue to that movie's share. Shop 40% and employee 10% are unchanged. Setting: Admin → Movie dividends → “Movie % of platform”. Shown on the closing screen for the pending period, in the admin tab (CSV export), and inside the signed/CSV/PDF sales report. See also WEEKLY_PASS.md.
+
+## Hidden backups
+See BACKUPS.md. Closing and diagnostics show backup health; a restore is logged as a `Kind=system` ledger entry.

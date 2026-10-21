@@ -251,6 +251,7 @@ public sealed class Closings
             cmd.ExecuteNonQuery();
             Accounts.Instance.Audit(Session.UserId, $"closing:{pending.Number}:{agent.AgentId}");
             Accounts.Instance.Set("closing_count", pending.Number.ToString());
+            BackupService.Schedule();
             _signedCache[pending.Number] = SignedFile(key, pending);
             return pending;
         }
