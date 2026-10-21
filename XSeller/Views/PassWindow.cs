@@ -27,7 +27,7 @@ public static class PassWindow
         public int Price => P.Price;
     }
 
-    public static void Show(Window owner, Passes passes, Func<List<ConnectedPhone>> connected, string? preselectDeviceId, Action<WeeklyPass> changed)
+    public static void Show(Window owner, Passes passes, Func<List<ConnectedPhone>> connected, string? preselectDeviceId, Action<WeeklyPass> changed, Action? refreshUi = null)
     {
         var win = Ui.Dialog("Weekly pass", 980, 700, owner);
         var root = new StackPanel();
@@ -94,8 +94,15 @@ public static class PassWindow
         void Done(WeeklyPass? p, string msg)
         {
             Reload(p?.Id);
-            if (p != null) changed(passes.All().First(x => x.Id == p.Id));
+            // Refresh the main window badge + write the phone file RIGHT NOW (don't wait for the 1-min timer or dialog close).
+            if (p != null)
+            {
+                var fresh = passes.All().First(x => x.Id == p.Id);
+                try { changed(fresh); } catch (Exception ex) { AdbService.Log("pass changed callback: " + ex.Message); }
+            }
+            try { refreshUi?.Invoke(); } catch { }
             MessageBox.Show(win, msg, "Weekly pass");
+            try { refreshUi?.Invoke(); } catch { }
         }
 
         void Try(Action a) { try { a(); } catch (Exception ex) { Ui.Error(win, ex.Message); } }

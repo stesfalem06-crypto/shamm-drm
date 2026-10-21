@@ -7,6 +7,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>XSeller</AssemblyName>
+    <ApplicationIcon>Assets\xseller.ico</ApplicationIcon>
+    <Product>X Seller</Product>
+    <Company>Shamm</Company>
+    <Version>0.5.0</Version>
 
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -32,7 +36,10 @@
   <ItemGroup>
     <None Include="shamm_crypto.dll" Condition="Exists('shamm_crypto.dll')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
+    <Resource Include="Assets\xseller.ico" Condition="Exists('Assets\xseller.ico')" />
     <!-- adb.exe + its support DLLs are downloaded by the GitHub Actions
          workflow at build time (see build-xseller.yml) and dropped into
          platform-tools/ next to the published exe - you never have to
@@ -73,6 +80,28 @@
           ContinueOnError="WarnAndContinue" />
     <Copy SourceFiles="$(CryptoDir)\target\i686-pc-windows-msvc\release\shamm_crypto.dll" DestinationFolder="$(X86Out)"
           Condition="Exists('$(CryptoDir)\target\i686-pc-windows-msvc\release\shamm_crypto.dll')" ContinueOnError="WarnAndContinue" />
+  </Target>
+
+  <Target Name="BuildInnoInstallers" AfterTargets="Publish"
+          Condition="'$(OS)' == 'Windows_NT' And '$(XSellerNoExtra)' != 'true'">
+    <PropertyGroup>
+      <_Pub>$([System.IO.Path]::GetFullPath('$(PublishDir)'))</_Pub>
+      <_X86>$(_Pub)x86</_X86>
+      <_Ps1>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\installer\build-installers.ps1'))</_Ps1>
+    </PropertyGroup>
+    <!-- Re-copy x64 crypto next to exe in case single-file publish dropped it -->
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\crypto-core\target\release\shamm_crypto.dll"
+          DestinationFolder="$(_Pub)" Condition="Exists('$(MSBuildProjectDirectory)\..\crypto-core\target\release\shamm_crypto.dll')" ContinueOnError="WarnAndContinue" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\crypto-core\target\x86_64-pc-windows-msvc\release\shamm_crypto.dll"
+          DestinationFolder="$(_Pub)" Condition="Exists('$(MSBuildProjectDirectory)\..\crypto-core\target\x86_64-pc-windows-msvc\release\shamm_crypto.dll')" ContinueOnError="WarnAndContinue" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(_Ps1)&quot; -App xseller -SourceDir &quot;$(_Pub.TrimEnd('\'))&quot; -X86Dir &quot;$(_X86)&quot;"
+          ContinueOnError="WarnAndContinue" />
+    <!-- Copy installers into publish\installers for the artifact -->
+    <MakeDir Directories="$(_Pub)installers" />
+    <ItemGroup>
+      <_Setups Include="$(MSBuildProjectDirectory)\..\installer\output\XSeller-Setup-*.exe" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_Setups)" DestinationFolder="$(_Pub)installers" ContinueOnError="WarnAndContinue" />
   </Target>
 
 </Project>

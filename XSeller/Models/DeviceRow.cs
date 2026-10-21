@@ -1,3 +1,4 @@
+using System.Windows.Media;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
@@ -89,9 +90,9 @@ public sealed class DeviceRow : INotifyPropertyChanged
     /// <summary>"Pass: 5 days left" / "Pass expired" / "No pass" ("" while unidentified).</summary>
     public string PassBadge { get => _passBadge; set => Set(ref _passBadge, value); }
 
-    private string _passColor = "#5A5A66";
+    private Brush _passColor = new SolidColorBrush(Color.FromRgb(0x5A, 0x5A, 0x66));
     /// <summary>Badge background: green / amber / red / grey.</summary>
-    public string PassColor { get => _passColor; set => Set(ref _passColor, value); }
+    public Brush PassColor { get => _passColor; set => Set(ref _passColor, value); }
 
     private string _passDetail = "";
     /// <summary>"Phones 2/3 · until Tue 28 Oct 14:05".</summary>

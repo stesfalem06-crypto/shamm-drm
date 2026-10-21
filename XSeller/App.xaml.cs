@@ -21,6 +21,14 @@ public partial class App : Application
                 System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
         }
         catch { }
+                // Fail early with a clear message if the native crypto DLL is missing (common after a bad unzip).
+        try { Services.NativeCrypto.EnsureLoaded(); }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "X Seller — crypto library missing", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(2);
+            return;
+        }
         base.OnStartup(e);
     }
 }

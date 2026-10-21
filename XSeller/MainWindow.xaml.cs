@@ -96,6 +96,7 @@ public partial class MainWindow : Window
             ApplyResponsive();
             if (Accounts.Instance.Enabled && !SignIn(allowCancel: false)) { Close(); return; }
             SearchBox.Focus(); Keyboard.Focus(SearchBox);
+            Dispatcher.BeginInvoke(() => UpdateChecker.OfferIfNewer(this), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             var warn = Integrity.Warnings(_ledger, _closings);
             if (warn.Count > 0) StatusText.Text = "⚠ Tamper warning: " + warn[0] + (warn.Count > 1 ? $" (+{warn.Count - 1} more — see Admin dashboard)" : "");
         };
@@ -1010,6 +1011,17 @@ public partial class MainWindow : Window
         }
     }
 
+    private static readonly SolidColorBrush PassBrushGreen = FreezeBrush(0x1E, 0x7E, 0x34);
+    private static readonly SolidColorBrush PassBrushAmber = FreezeBrush(0xB2, 0x6A, 0x00);
+    private static readonly SolidColorBrush PassBrushRed = FreezeBrush(0xC6, 0x28, 0x28);
+    private static readonly SolidColorBrush PassBrushGrey = FreezeBrush(0x5A, 0x5A, 0x66);
+    private static SolidColorBrush FreezeBrush(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
+
     private void UpdatePassBadges()
     {
         var now = _passes.Now();
@@ -1018,7 +1030,7 @@ public partial class MainWindow : Window
             if (row.DeviceId == null)
             {
                 row.PassBadge = row.IsReady && !row.IdentityPending && _identityTried.ContainsKey(row.Serial) ? "No pass" : "";
-                row.PassColor = "#5A5A66";
+                row.PassColor = PassBrushGrey;
                 row.PassDetail = row.PassBadge == "" ? "" : "open Xama once to identify";
                 continue;
             }
@@ -1027,19 +1039,19 @@ public partial class MainWindow : Window
             {
                 var d = a.DaysLeft(now);
                 row.PassBadge = $"Pass: {d} day{(d == 1 ? "" : "s")} left";
-                row.PassColor = d <= 1 ? "#B26A00" : "#1E7E34";
+                row.PassColor = d <= 1 ? PassBrushAmber : PassBrushGreen;
                 row.PassDetail = $"Phones {a.ActivePhones.Count()}/{Passes.MaxPhones} · until {a.ExpiresUtc.ToLocalTime():ddd dd MMM HH:mm}";
             }
             else if (_passes.LatestFor(row.DeviceId) is { } old)
             {
                 row.PassBadge = "Pass expired";
-                row.PassColor = "#C62828";
+                row.PassColor = PassBrushRed;
                 row.PassDetail = $"ended {old.ExpiresUtc.ToLocalTime():ddd dd MMM HH:mm}";
             }
             else
             {
                 row.PassBadge = "No pass";
-                row.PassColor = "#5A5A66";
+                row.PassColor = PassBrushGrey;
                 row.PassDetail = "";
             }
         }
@@ -1053,17 +1065,22 @@ public partial class MainWindow : Window
         var pre = _deviceRows.FirstOrDefault(r => r.IsChecked && r.DeviceId != null)?.DeviceId;
         if (!_deviceRows.Any(r => r.DeviceId != null))
             StatusText.Text = "No identified phone yet — plug in (File transfer) and open Xama once; you can still view the passes list.";
+        void RefreshNow()
+        {
+            UpdatePassBadges();
+            RefreshDebt();
+        }
         Views.PassWindow.Show(this, _passes, IdentifiedPhones, pre, pass =>
         {
-            // Refresh the display file on every connected phone of this pass.
-            // (includes phones just removed / swapped out → their file says "removed").
+            // Write the display-only pass file immediately (blocking a short moment so the phone shows it).
             foreach (var r in _deviceRows.Where(r => r.MtpId != null && r.DeviceId != null && pass.Phones.Any(p => p.DeviceId == r.DeviceId)).ToList())
             {
                 var mtpId = r.MtpId!; var id = r.DeviceId!;
-                Task.Run(() => _passes.WriteToPhone(_mtp, mtpId, id, _shopName));
+                try { _passes.WriteToPhone(_mtp, mtpId, id, _shopName); }
+                catch (Exception ex) { AdbService.Log("pass file immediate write: " + ex.Message); }
             }
-        });
-        UpdatePassBadges();
-        RefreshDebt();
+            RefreshNow();
+        }, refreshUi: RefreshNow);
+        RefreshNow();
     }
 }

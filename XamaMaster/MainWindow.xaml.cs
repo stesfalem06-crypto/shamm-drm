@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Loaded += (_, _) => Dispatcher.BeginInvoke(() => Services.UpdateChecker.OfferIfNewer(this), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         Directory.CreateDirectory(_outputDir);
         LibraryList.ItemsSource = _library;
         _library.CollectionChanged += (_, _) => UpdateEmptyState();

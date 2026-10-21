@@ -1,41 +1,101 @@
+using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace XamaMaster.Services;
 
 /// <summary>
-/// Thin, exact wrapper around shamm_crypto.dll (built from crypto-core/ in
-/// Phase 1). This is the ONLY file in Xama Master allowed to call into the
-/// native library directly - everything else goes through VideoEncryptor,
-/// so if the native signatures ever change, there's exactly one place to fix.
+/// P/Invoke into shamm_crypto.dll (crypto-core/). The DLL must sit next to the .exe —
+/// it is deliberately excluded from the single-file bundle so Windows loads it from disk.
+/// Call EnsureLoaded() at startup for a clear error if it is missing or the wrong arch.
 /// </summary>
 internal static class NativeCrypto
 {
-    private const string Lib = "shamm_crypto.dll";
+    private const string Lib = "shamm_crypto";
+    public const int KeyLen = 32;
+    public const int IvLen = 16;
+    public const int WrappedKeyLen = 12 + 32 + 16; // nonce + ciphertext + tag
 
-    [DllImport(Lib)] internal static extern int shamm_generate_key(byte[] outKey, uint outKeyLen);
+    private static bool _ready;
+    private static string? _path;
 
-    [DllImport(Lib)] internal static extern int shamm_derive_device_key(
+    static NativeCrypto() => NativeLibrary.SetDllImportResolver(typeof(NativeCrypto).Assembly, Resolve);
+
+    private static IntPtr Resolve(string name, Assembly assembly, DllImportSearchPath? search)
+    {
+        if (!name.Equals("shamm_crypto", StringComparison.OrdinalIgnoreCase) &&
+            !name.Equals("shamm_crypto.dll", StringComparison.OrdinalIgnoreCase))
+            return IntPtr.Zero;
+        EnsureLoaded();
+        return NativeLibrary.Load(_path!);
+    }
+
+    public static void EnsureLoaded()
+    {
+        if (_ready) return;
+        foreach (var dir in CandidateDirs())
+        {
+            var p = Path.Combine(dir, "shamm_crypto.dll");
+            if (!File.Exists(p)) continue;
+            if (NativeLibrary.TryLoad(p, out _))
+            {
+                _path = p;
+                _ready = true;
+                return;
+            }
+            throw new DllNotFoundException(
+                $"Found shamm_crypto.dll at:\n{p}\n\nbut Windows could not load it.\n" +
+                "It is probably the wrong architecture (x86 vs x64) or corrupted. Reinstall Shamm Master.");
+        }
+        throw new DllNotFoundException(
+            "shamm_crypto.dll was not found next to Shamm Master.\n\nLooked in:\n  " +
+            string.Join("\n  ", CandidateDirs()) +
+            "\n\nReinstall from the official installer — the DLL must ship beside the .exe.");
+    }
+
+    public static string? LoadedPath { get { EnsureLoaded(); return _path; } }
+
+    private static List<string> CandidateDirs()
+    {
+        var seen = new List<string>();
+        void Add(string? d)
+        {
+            if (string.IsNullOrEmpty(d)) return;
+            d = d.TrimEnd('\\', '/');
+            if (!seen.Contains(d, StringComparer.OrdinalIgnoreCase)) seen.Add(d);
+        }
+        try { Add(Path.GetDirectoryName(Environment.ProcessPath)); } catch { }
+        try { Add(AppContext.BaseDirectory); } catch { }
+        try
+        {
+            var loc = Assembly.GetExecutingAssembly().Location;
+            if (!string.IsNullOrEmpty(loc)) Add(Path.GetDirectoryName(loc));
+        }
+        catch { }
+        try { Add(Directory.GetCurrentDirectory()); } catch { }
+        return seen;
+    }
+
+    [DllImport(Lib)] public static extern int shamm_generate_key(byte[] outKey, uint outKeyLen);
+
+    [DllImport(Lib)] public static extern int shamm_derive_device_key(
         byte[] fingerprint, uint fingerprintLen, byte[] outKey, uint outKeyLen);
 
-    [DllImport(Lib)] internal static extern int shamm_wrap_key(
+    [DllImport(Lib)] public static extern int shamm_wrap_key(
         byte[] contentKey, uint contentKeyLen,
-        byte[] deviceKey, uint deviceKeyLen,
+        byte[] wrappingKey, uint wrappingKeyLen,
         byte[] outWrapped, uint outWrappedLen);
 
-    [DllImport(Lib)] internal static extern int shamm_unwrap_key(
+    [DllImport(Lib)] public static extern int shamm_unwrap_key(
         byte[] wrapped, uint wrappedLen,
-        byte[] deviceKey, uint deviceKeyLen,
-        byte[] outContentKey, uint outContentKeyLen);
+        byte[] wrappingKey, uint wrappingKeyLen,
+        byte[] outKey, uint outKeyLen);
 
-    [DllImport(Lib)] internal static extern int shamm_ctr_crypt(
-        byte[] contentKey, uint contentKeyLen,
-        byte[] iv, uint ivLen,
-        ulong streamOffset,
+    [DllImport(Lib)] public static extern int shamm_ctr_crypt(
+        byte[] key, uint keyLen,
+        byte[] nonce, uint nonceLen,
+        ulong counter,
         byte[] data, uint dataLen);
 
-    [DllImport(Lib)] internal static extern int shamm_wipe(byte[] buf, uint len);
-
-    internal const int KeyLen = 32;
-    internal const int IvLen = 16;
-    internal const int WrappedKeyLen = 12 + 32 + 16; // nonce + ciphertext + tag
+    [DllImport(Lib)] public static extern int shamm_wipe(byte[] buf, uint len);
 }
