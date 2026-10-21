@@ -79,6 +79,10 @@
             android:maxLines="1"
             android:visibility="gone"/>
 
+        <TextView android:id="@+id/passBadge" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="2dp" android:paddingBottom="2dp"
+            android:background="@drawable/badge_bg" android:textColor="#FFFFFFFF" android:textSize="11sp" android:fontFamily="sans-serif-medium"
+            android:visibility="gone"/>
         <ImageButton android:id="@+id/btnSearch" style="@style/ToolbarButton"
             android:src="@drawable/ic_search" android:contentDescription="Search"/>
         <ImageButton android:id="@+id/btnViewMode" style="@style/ToolbarButton"
@@ -110,6 +114,10 @@
             android:paddingEnd="16dp"
             android:text="▶  Play feed"/>
     </LinearLayout>
+
+    <include android:id="@+id/passCardProtected" layout="@layout/layout_pass_card"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginStart="12dp" android:layout_marginEnd="12dp" android:layout_marginTop="8dp" android:visibility="gone"/>
 
     <FrameLayout
         android:layout_width="match_parent"

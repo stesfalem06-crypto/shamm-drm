@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:orientation="horizontal" android:gravity="center_vertical"
+    android:background="@drawable/card_bg" android:padding="14dp">
+    <View android:id="@+id/passDot" android:layout_width="12dp" android:layout_height="12dp"
+        android:background="@drawable/avatar_circle"/>
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+        android:layout_marginStart="14dp" android:orientation="vertical">
+        <TextView android:id="@+id/passTitle" style="@style/Text.Title" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textSize="16sp" android:text="No pass"/>
+        <TextView android:id="@+id/passSub" style="@style/Text.Caption" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:layout_marginTop="2dp"/>
+    </LinearLayout>
+</LinearLayout>

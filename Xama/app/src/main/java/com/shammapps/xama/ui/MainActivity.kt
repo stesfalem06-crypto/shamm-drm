@@ -274,6 +274,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (tab == Tab.PROFILE) bindScanAll()
+        bindPass()
         if (hasLoadedOnce && System.currentTimeMillis() - LibraryCache.lastScanMs > 1500) {
             reloadAsync(force = false)
         } else if (hasLoadedOnce) {
@@ -532,6 +533,41 @@ class MainActivity : AppCompatActivity() {
 
     private fun watchedIds(): Set<String> = WatchHistory.recentIds(this).toHashSet()
 
+    private fun bindPass() {
+        val pass = com.shammapps.xama.pass.WeeklyPass.load(this)
+        val st = pass?.state() ?: com.shammapps.xama.pass.WeeklyPass.State.NONE
+        val color = when (st) {
+            com.shammapps.xama.pass.WeeklyPass.State.ACTIVE -> 0xFF2E7D32.toInt()
+            com.shammapps.xama.pass.WeeklyPass.State.LAST_DAY -> 0xFFF9A825.toInt()
+            com.shammapps.xama.pass.WeeklyPass.State.EXPIRED -> 0xFFC62828.toInt()
+            com.shammapps.xama.pass.WeeklyPass.State.NONE -> 0xFF616161.toInt()
+        }
+        val df = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
+        val days = pass?.daysLeft() ?: 0
+        val title: String; val sub: String; val badge: String
+        when (st) {
+            com.shammapps.xama.pass.WeeklyPass.State.NONE -> { title = "No pass"; sub = "Get a weekly pass at your Xama shop"; badge = "No pass" }
+            com.shammapps.xama.pass.WeeklyPass.State.EXPIRED -> { title = "Expired, renew at ${pass!!.shopName}"; sub = "Expired ${df.format(java.util.Date(pass.expiryMs))}"; badge = "Expired" }
+            else -> {
+                title = "Weekly pass, $days day${if (days == 1) "" else "s"} left, ${pass!!.shopName}"
+                sub = "Expires ${df.format(java.util.Date(pass.expiryMs))} \u00b7 phones ${pass.phonesUsed}/${pass.phonesMax}"
+                badge = if (st == com.shammapps.xama.pass.WeeklyPass.State.LAST_DAY) "Last day" else "${days}d"
+            }
+        }
+        for (id in intArrayOf(R.id.passCardProtected, R.id.passCardProfile)) {
+            val card = findViewById<View>(id) ?: continue
+            card.findViewById<TextView>(R.id.passTitle).text = title
+            card.findViewById<TextView>(R.id.passSub).text = sub
+            card.findViewById<View>(R.id.passDot).background.mutate().setTint(color)
+        }
+        findViewById<View>(R.id.passCardProtected)?.visibility = if (tab == Tab.PROTECTED) View.VISIBLE else View.GONE
+        findViewById<TextView>(R.id.passBadge)?.let {
+            it.text = badge
+            it.background.mutate().setTint(color)
+            it.visibility = if (searchOpen) View.GONE else View.VISIBLE
+        }
+    }
+
     private fun render(animate: Boolean = false) {
         val list = findViewById<RecyclerView>(R.id.contentList)
         val profile = findViewById<View>(R.id.profilePanel)
@@ -542,6 +578,7 @@ class MainActivity : AppCompatActivity() {
 
         updateToolbar()
         updateModeBar()
+        bindPass()
         list.visibility = View.GONE
         profile.visibility = View.GONE
         empty.visibility = View.GONE
