@@ -269,12 +269,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        bindPass()
+        startPassWatch()
         if (!scanStarted) {
             if (OnboardingActivity.isDone(this)) startScan()
             return
         }
         if (tab == Tab.PROFILE) bindScanAll()
-        bindPass()
         if (hasLoadedOnce && System.currentTimeMillis() - LibraryCache.lastScanMs > 1500) {
             reloadAsync(force = false)
         } else if (hasLoadedOnce) {
@@ -533,13 +534,97 @@ class MainActivity : AppCompatActivity() {
 
     private fun watchedIds(): Set<String> = WatchHistory.recentIds(this).toHashSet()
 
+    // ---- live weekly-pass refresh (display only) ----
+    private val myDeviceId: String? by lazy { runCatching { com.shammapps.xama.storage.XamaStorage.deviceIdHex(this) }.getOrNull() }
+    private var passStamp: String? = null
+    private val passHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val passObservers = mutableListOf<android.os.FileObserver>()
+    private var passContentObserver: android.database.ContentObserver? = null
+    private var passReceiver: android.content.BroadcastReceiver? = null
+    private var passWatching = false
+
+    private fun passMaybeRefresh(force: Boolean = false) {
+        if (!passWatching && !force) return
+        val st = com.shammapps.xama.pass.WeeklyPass.stamp(this)
+        if (force || st != passStamp) bindPass()
+    }
+    private val passDebounced = Runnable { passMaybeRefresh(force = true) }
+    private fun passPoke(delayMs: Long = 400) { passHandler.removeCallbacks(passDebounced); passHandler.postDelayed(passDebounced, delayMs) }
+
+    private fun isPlugged(): Boolean {
+        val i = registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+        return (i?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+    }
+    private val passPoll = object : Runnable {
+        override fun run() {
+            if (!passWatching) return
+            passMaybeRefresh()
+            passHandler.postDelayed(this, if (isPlugged()) 3000L else 15000L)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun startPassWatch() {
+        if (passWatching) return
+        passWatching = true
+        val mask = android.os.FileObserver.CLOSE_WRITE or android.os.FileObserver.MOVED_TO or
+            android.os.FileObserver.CREATE or android.os.FileObserver.DELETE or android.os.FileObserver.MODIFY
+        for (dir in com.shammapps.xama.pass.WeeklyPass.watchDirs(this)) {
+            runCatching {
+                val obs = object : android.os.FileObserver(dir.absolutePath, mask) {
+                    override fun onEvent(event: Int, path: String?) {
+                        if (path == null || path.contains("pass", true)) passHandler.post { passPoke() }
+                    }
+                }
+                obs.startWatching(); passObservers += obs
+            }
+        }
+        runCatching {
+            val co = object : android.database.ContentObserver(passHandler) {
+                override fun onChange(selfChange: Boolean) { passPoke(800) }
+            }
+            contentResolver.registerContentObserver(android.provider.MediaStore.Files.getContentUri("external"), true, co)
+            passContentObserver = co
+        }
+        val rx = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
+                passPoke(); passHandler.postDelayed({ passMaybeRefresh(force = true) }, 2500)
+                passHandler.removeCallbacks(passPoll); passHandler.postDelayed(passPoll, 3000)
+            }
+        }
+        val f = android.content.IntentFilter().apply {
+            addAction(android.content.Intent.ACTION_POWER_CONNECTED)
+            addAction(android.content.Intent.ACTION_POWER_DISCONNECTED)
+            addAction("android.hardware.usb.action.USB_STATE")
+            addAction(android.content.Intent.ACTION_MEDIA_SCANNER_FINISHED)
+            addAction(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
+        }
+        runCatching { ContextCompat.registerReceiver(this, rx, f, ContextCompat.RECEIVER_EXPORTED); passReceiver = rx }
+        passHandler.postDelayed(passPoll, 3000)
+    }
+
+    private fun stopPassWatch() {
+        passWatching = false
+        passHandler.removeCallbacksAndMessages(null)
+        passObservers.forEach { runCatching { it.stopWatching() } }; passObservers.clear()
+        passContentObserver?.let { runCatching { contentResolver.unregisterContentObserver(it) } }; passContentObserver = null
+        passReceiver?.let { runCatching { unregisterReceiver(it) } }; passReceiver = null
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopPassWatch()
+    }
+
     private fun bindPass() {
-        val pass = com.shammapps.xama.pass.WeeklyPass.load(this)
+        val pass = com.shammapps.xama.pass.WeeklyPass.load(this, myDeviceId)
+        passStamp = com.shammapps.xama.pass.WeeklyPass.stamp(this)
         val st = pass?.state() ?: com.shammapps.xama.pass.WeeklyPass.State.NONE
         val color = when (st) {
             com.shammapps.xama.pass.WeeklyPass.State.ACTIVE -> 0xFF2E7D32.toInt()
             com.shammapps.xama.pass.WeeklyPass.State.LAST_DAY -> 0xFFF9A825.toInt()
-            com.shammapps.xama.pass.WeeklyPass.State.EXPIRED -> 0xFFC62828.toInt()
+            com.shammapps.xama.pass.WeeklyPass.State.EXPIRED,
+            com.shammapps.xama.pass.WeeklyPass.State.REMOVED -> 0xFFC62828.toInt()
             com.shammapps.xama.pass.WeeklyPass.State.NONE -> 0xFF616161.toInt()
         }
         val df = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
@@ -547,6 +632,7 @@ class MainActivity : AppCompatActivity() {
         val title: String; val sub: String; val badge: String
         when (st) {
             com.shammapps.xama.pass.WeeklyPass.State.NONE -> { title = "No pass"; sub = "Get a weekly pass at your Xama shop"; badge = "No pass" }
+            com.shammapps.xama.pass.WeeklyPass.State.REMOVED -> { title = "Pass removed, ask at ${pass!!.shopName}"; sub = "This phone was removed from the weekly pass"; badge = "No pass" }
             com.shammapps.xama.pass.WeeklyPass.State.EXPIRED -> { title = "Expired, renew at ${pass!!.shopName}"; sub = "Expired ${df.format(java.util.Date(pass.expiryMs))}"; badge = "Expired" }
             else -> {
                 title = "Weekly pass, $days day${if (days == 1) "" else "s"} left, ${pass!!.shopName}"

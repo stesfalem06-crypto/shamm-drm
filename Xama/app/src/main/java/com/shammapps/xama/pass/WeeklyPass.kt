@@ -19,10 +19,14 @@ data class WeeklyPass(
     val phonesUsed: Int,
     val phonesMax: Int,
     val signature: String,
+    val status: String = "active",
+    val deviceId: String = "",
 ) {
-    enum class State { NONE, ACTIVE, LAST_DAY, EXPIRED }
+    enum class State { NONE, ACTIVE, LAST_DAY, EXPIRED, REMOVED }
 
     fun state(now: Long = System.currentTimeMillis()): State = when {
+        status.equals("removed", true) -> State.REMOVED
+        status.equals("expired", true) -> State.EXPIRED
         now >= expiryMs -> State.EXPIRED
         expiryMs - now <= DAY -> State.LAST_DAY
         else -> State.ACTIVE
@@ -35,28 +39,41 @@ data class WeeklyPass(
         private const val DAY = 24L * 60 * 60 * 1000
 
         fun candidates(ctx: Context): List<File> {
-            val ext = Environment.getExternalStorageDirectory()
+            // Android/media/<pkg> via externalMediaDirs: readable by the app without any storage permission.
             return listOf(
-                File(ext, "Android/media/${ctx.packageName}/xama-pass.json"),
+                File(com.shammapps.xama.storage.XamaStorage.mediaDir(ctx), "xama-pass.json"),
+                File(Environment.getExternalStorageDirectory(), "Android/media/${ctx.packageName}/xama-pass.json"),
                 File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Xama/.xama-pass.json"),
-            )
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Xama/xama-pass.json"),
+            ).distinctBy { it.absolutePath }
+        }
+
+        fun watchDirs(ctx: Context): List<File> = candidates(ctx).mapNotNull { it.parentFile }.distinctBy { it.absolutePath }
+
+        /** Cheap change signature of the candidate files (mtime+size). */
+        fun stamp(ctx: Context): String = candidates(ctx).joinToString("|") { f ->
+            runCatching { if (f.isFile) "${f.lastModified()}:${f.length()}" else "-" }.getOrDefault("?")
         }
 
         /** Newest readable pass (latest expiry) or null. */
-        fun load(ctx: Context): WeeklyPass? = candidates(ctx).mapNotNull { f ->
+        /** Newest pass for THIS phone (deviceId match when present). Display only. */
+        fun load(ctx: Context, myDeviceId: String?): WeeklyPass? = candidates(ctx).mapNotNull { f ->
             runCatching { if (f.isFile && f.length() < 64 * 1024) parse(f.readText()) else null }.getOrNull()
-        }.maxByOrNull { it.expiryMs }
+        }.filter { p -> p.deviceId.isEmpty() || myDeviceId.isNullOrEmpty() || p.deviceId.equals(myDeviceId, true) }
+            .maxByOrNull { it.expiryMs }
 
         fun parse(text: String): WeeklyPass? {
             val o = JSONObject(text)
-            val expiry = parseTime(o.opt("expiryUtc")) ?: return null
+            val expiry = parseTime(o.opt("expiresUtc")) ?: parseTime(o.opt("expiryUtc")) ?: return null
             return WeeklyPass(
                 shopName = o.optString("shopName", "").trim().ifEmpty { "your shop" },
                 startMs = parseTime(o.opt("startUtc")) ?: 0L,
                 expiryMs = expiry,
                 phonesUsed = o.optInt("phonesUsed", 0),
                 phonesMax = o.optInt("phonesMax", 3),
-                signature = o.optString("signature", ""),
+                signature = o.optString("sig", o.optString("signature", "")),
+                status = o.optString("status", "active").trim(),
+                deviceId = o.optString("deviceId", "").trim(),
             )
         }
 
