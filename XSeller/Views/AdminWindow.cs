@@ -152,7 +152,7 @@ public static class AdminWindow
         {
             var tb = new TextBox { Text = Prices.GetCategory(c).ToString(), Width = 120, Padding = new Thickness(4), HorizontalAlignment = HorizontalAlignment.Left };
             boxes[c] = tb;
-            panel.Children.Add(Ui.Labeled(c, tb, 120));
+            panel.Children.Add(Ui.Labeled(c == "pass" ? "weekly pass" : c, tb, 120));
         }
         var (pp, sp, ep) = RevenueSplit.Current;
         panel.Children.Add(Ui.Row(Ui.Button("Save prices", (_, _) =>

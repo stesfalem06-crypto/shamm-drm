@@ -37,3 +37,6 @@ shopCode = first 8 chars of the shop id, upper case. QR text: `XSC1;shop=…;n=�
 - Closing history chain, numbering and count are checked.
 - The clock moving backwards (vs. the highest time seen, or sale times out of order) is reported.
 Warnings appear in the admin dashboard, the closing screen and the status bar at startup.
+
+## Weekly passes in closings
+Weekly pass activations are ledger sales (`Kind=pass`, price from Admin → Prices) attributed to the employee who sold them, so they are included in “owed since last closing”, the closing totals and the 50/40/10 split. Protected transfers covered by a pass are recorded at price 0 (`Kind=pass-use`) and pass add/remove/swap events at price 0 (`Kind=pass-event`), so they are counted as sales lines but add no revenue. See WEEKLY_PASS.md.

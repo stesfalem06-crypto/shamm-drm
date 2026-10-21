@@ -18,6 +18,8 @@ public partial class MainWindow : Window
     private readonly TransferService _transfer;
     private readonly SettlementExporter _settlement;
     private readonly Closings _closings;
+    private readonly Passes _passes;
+    private readonly Dictionary<string, DateTime> _identityTried = new();
     private readonly LibraryIndex _index = new();
 
     private readonly BatchSender _batch;
@@ -39,6 +41,11 @@ public partial class MainWindow : Window
         InitializeComponent();
         Accounts.Init(_ledger);
         _closings = new Closings(_ledger);
+        _passes = new Passes(_ledger);
+        _passes.Changed += () => Dispatcher.BeginInvoke(() => { UpdatePassBadges(); RefreshDebt(); });
+        var passTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+        passTimer.Tick += (_, _) => UpdatePassBadges();
+        passTimer.Start();
         Session.Changed += () => Dispatcher.BeginInvoke(UpdateUserUi);
         UpdateUserUi();
         _transfer = new TransferService(_adb, _ledger);
@@ -696,6 +703,8 @@ public partial class MainWindow : Window
             _deviceRows.RemoveAt(i);
         }
 
+        ResolveIdentities();
+        UpdatePassBadges();
         DevicesEmpty.Visibility = _deviceRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         var ready = _deviceRows.Count(r => r.IsReady);
         var locked = _deviceRows.Count(r => r.State is "locked" or "charge-only" or "needs-debugging");
@@ -961,5 +970,98 @@ public partial class MainWindow : Window
             StatusText.Text = $"Settlement applied: {n} sale(s) marked paid.";
         }
         catch (Exception ex) { StatusText.Text = $"Import failed: {ex.Message}"; }
+    }
+
+    // ---------------- weekly pass
+
+    /// <summary>Read each ready phone's Xama deviceId in the background (MTP xama-device.json, else adb), then show its pass
+    /// badge and (re)write the display-only pass file on the phone — i.e. on every plug-in.</summary>
+    private void ResolveIdentities()
+    {
+        foreach (var row in _deviceRows)
+        {
+            if (!row.IsReady || row.DeviceId != null || row.IdentityPending) continue;
+            if (_identityTried.TryGetValue(row.Serial, out var t) && DateTime.UtcNow - t < TimeSpan.FromSeconds(20)) continue;
+            _identityTried[row.Serial] = DateTime.UtcNow;
+            row.IdentityPending = true;
+            var mtpId = row.MtpId; var adb = row.AdbSerial;
+            Task.Run(() =>
+            {
+                string? id = null;
+                try
+                {
+                    if (mtpId != null && _mtp.IsReady(mtpId) && _mtp.ReadDeviceFile(mtpId) is { } f)
+                        id = Convert.ToHexString(MtpService.FingerprintFrom(f)).ToLowerInvariant();
+                    else if (adb != null)
+                        id = Convert.ToHexString(_adb.GetHardwareFingerprint(adb)).ToLowerInvariant();
+                }
+                catch (Exception ex) { AdbService.Log("pass identity: " + ex.Message); }
+                if (id != null && mtpId != null)
+                    _passes.WriteToPhone(_mtp, mtpId, id, _shopName);
+                Dispatcher.BeginInvoke(() =>
+                {
+                    row.IdentityPending = false;
+                    row.DeviceId = id;
+                    UpdatePassBadges();
+                });
+            });
+        }
+    }
+
+    private void UpdatePassBadges()
+    {
+        var now = _passes.Now();
+        foreach (var row in _deviceRows)
+        {
+            if (row.DeviceId == null)
+            {
+                row.PassBadge = row.IsReady && !row.IdentityPending && _identityTried.ContainsKey(row.Serial) ? "No pass" : "";
+                row.PassColor = "#5A5A66";
+                row.PassDetail = row.PassBadge == "" ? "" : "open Xama once to identify";
+                continue;
+            }
+            var a = _passes.ActiveFor(row.DeviceId);
+            if (a != null)
+            {
+                var d = a.DaysLeft(now);
+                row.PassBadge = $"Pass: {d} day{(d == 1 ? "" : "s")} left";
+                row.PassColor = d <= 1 ? "#B26A00" : "#1E7E34";
+                row.PassDetail = $"Phones {a.ActivePhones.Count()}/{Passes.MaxPhones} · until {a.ExpiresUtc.ToLocalTime():ddd dd MMM HH:mm}";
+            }
+            else if (_passes.LatestFor(row.DeviceId) is { } old)
+            {
+                row.PassBadge = "Pass expired";
+                row.PassColor = "#C62828";
+                row.PassDetail = $"ended {old.ExpiresUtc.ToLocalTime():ddd dd MMM HH:mm}";
+            }
+            else
+            {
+                row.PassBadge = "No pass";
+                row.PassColor = "#5A5A66";
+                row.PassDetail = "";
+            }
+        }
+    }
+
+    private List<Views.ConnectedPhone> IdentifiedPhones() =>
+        _deviceRows.Where(r => r.DeviceId != null).Select(r => new Views.ConnectedPhone(r.DeviceId!, r.Model, r.MtpId)).ToList();
+
+    private void WeeklyPass_Click(object sender, RoutedEventArgs e)
+    {
+        var pre = _deviceRows.FirstOrDefault(r => r.IsChecked && r.DeviceId != null)?.DeviceId;
+        if (!_deviceRows.Any(r => r.DeviceId != null))
+            StatusText.Text = "No identified phone yet — plug in (File transfer) and open Xama once; you can still view the passes list.";
+        Views.PassWindow.Show(this, _passes, IdentifiedPhones, pre, pass =>
+        {
+            // Refresh the display file on every connected phone of this pass.
+            // (includes phones just removed / swapped out → their file says "removed").
+            foreach (var r in _deviceRows.Where(r => r.MtpId != null && r.DeviceId != null && pass.Phones.Any(p => p.DeviceId == r.DeviceId)).ToList())
+            {
+                var mtpId = r.MtpId!; var id = r.DeviceId!;
+                Task.Run(() => _passes.WriteToPhone(_mtp, mtpId, id, _shopName));
+            }
+        });
+        UpdatePassBadges();
+        RefreshDebt();
     }
 }

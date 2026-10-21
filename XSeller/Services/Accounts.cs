@@ -223,7 +223,7 @@ public static class RevenueSplit
 /// <summary>Prices for plain (unprotected) sends: per category, optional per-item override. Protected = package TokenPrice.</summary>
 public static class Prices
 {
-    public static readonly string[] Categories = ["video", "pdf", "image", "exe", "other"];
+    public static readonly string[] Categories = ["video", "pdf", "image", "exe", "other", "pass"];
 
     public static string CategoryOf(Models.LibraryItem it) => it.IsEncrypted ? "protected" : it.Kind switch
     {

@@ -7,7 +7,7 @@ public class TransferService
 {
     private readonly AdbService _adb;
     private readonly LedgerDatabase _ledger;
-    private static readonly object LedgerGate = new();
+    internal static readonly object LedgerGate = new();
 
     public TransferService(AdbService adb, LedgerDatabase ledger)
     {
@@ -47,6 +47,8 @@ public class TransferService
             if (rc != 0) throw new InvalidOperationException("Could not unlock package for shops.");
 
             var fingerprint = fingerprintProvider();
+            // Weekly pass (ledger/pricing only — the crypto below is unchanged).
+            var pass = Passes.Instance?.ActiveFor(Convert.ToHexString(fingerprint));
             var deviceKey = new byte[NativeCrypto.KeyLen];
             try
             {
@@ -93,13 +95,13 @@ public class TransferService
                     VideoId = video.VideoId,
                     VideoTitle = video.Title,
                     DeviceSerial = ledgerSerial,
-                    DeviceModel = ledgerModel,
-                    TokenPrice = video.TokenPrice,
+                    DeviceModel = pass == null ? ledgerModel : $"{ledgerModel} · pass #{pass.Id}",
+                    TokenPrice = pass == null ? video.TokenPrice : 0,
                     SentAtUtc = DateTime.UtcNow,
                     UserId = Session.UserId,
                     UserName = Session.UserName,
                     ShopId = Session.ShopId,
-                    Kind = "protected",
+                    Kind = pass == null ? "protected" : "pass-use",
                     Category = "protected",
                 });
             }

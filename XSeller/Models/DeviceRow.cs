@@ -80,6 +80,23 @@ public sealed class DeviceRow : INotifyPropertyChanged
     private double _progress;
     public double Progress { get => _progress; set => Set(ref _progress, value); }
 
+    // ---- Weekly pass
+    /// <summary>Xama deviceId (hex SHA-256(androidId|abi)), once read from the phone; null = not identified yet.</summary>
+    public string? DeviceId { get; set; }
+    public bool IdentityPending { get; set; }
+
+    private string _passBadge = "";
+    /// <summary>"Pass: 5 days left" / "Pass expired" / "No pass" ("" while unidentified).</summary>
+    public string PassBadge { get => _passBadge; set => Set(ref _passBadge, value); }
+
+    private string _passColor = "#5A5A66";
+    /// <summary>Badge background: green / amber / red / grey.</summary>
+    public string PassColor { get => _passColor; set => Set(ref _passColor, value); }
+
+    private string _passDetail = "";
+    /// <summary>"Phones 2/3 · until Tue 28 Oct 14:05".</summary>
+    public string PassDetail { get => _passDetail; set => Set(ref _passDetail, value); }
+
     private bool _busy;
     public bool Busy { get => _busy; set => Set(ref _busy, value); }
 

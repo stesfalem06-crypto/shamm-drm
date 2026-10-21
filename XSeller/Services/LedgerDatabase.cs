@@ -89,6 +89,16 @@ public class LedgerDatabase
 
     public string ConnectionString => _connString;
 
+    public DateTime LastSaleTimeUtc()
+    {
+        using var conn = new SqliteConnection(_connString);
+        conn.Open();
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT SentAtUtc FROM ledger ORDER BY Id DESC LIMIT 1;";
+        return cmd.ExecuteScalar() is string s && DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.RoundtripKind, out var t)
+            ? t.ToUniversalTime() : DateTime.MinValue;
+    }
+
     public string? GetSaleHash(long id)
     {
         using var conn = new SqliteConnection(_connString);

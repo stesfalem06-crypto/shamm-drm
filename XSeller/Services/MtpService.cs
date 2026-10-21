@@ -298,6 +298,26 @@ public sealed class MtpService : IDisposable
         });
 
     /// <summary>Read Xama's device-id file. Null when Xama hasn't written it yet.</summary>
+    public static readonly string[] PassFileTargets =
+    [
+        $@"Android\media\{XamaPackage}|xama-pass.json",
+        @"Download\Xama|.xama-pass.json",
+    ];
+
+    /// <summary>Write the (display-only) weekly pass file to every target folder. Returns how many succeeded.</summary>
+    public int WritePassFile(string id, string localPath) =>
+        WithDevice(id, (dev, root) =>
+        {
+            var ok = 0;
+            foreach (var t in PassFileTargets)
+            {
+                var parts = t.Split('|');
+                try { Upload(dev, localPath, Join(root, parts[0]), parts[1], null); ok++; }
+                catch (Exception ex) { AdbService.Log($"pass file {t} failed: {ex.Message}"); }
+            }
+            return ok;
+        });
+
     public XamaDeviceFile? ReadDeviceFile(string id) =>
         WithDevice(id, (dev, root) =>
         {

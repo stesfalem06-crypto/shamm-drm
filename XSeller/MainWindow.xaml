@@ -217,6 +217,9 @@
                         <Button Content="Import settlement" Style="{StaticResource PrimaryButton}"
                                 Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
                                 Margin="0,0,0,8" Click="ImportSettlement_Click"/>
+                        <Button Content="Weekly pass…" Style="{StaticResource PrimaryButton}"
+                                Margin="0,0,0,8" Click="WeeklyPass_Click"
+                                ToolTip="Activate / manage a 7-day pass for the ticked phone (protected movies free, plain files charged)"/>
                         <Button Content="Closing (platform agent)…" Style="{StaticResource PrimaryButton}"
                                 Margin="0,0,0,8" Click="Closing_Click"/>
                         <Button x:Name="AdminButton" Content="Admin dashboard…" Style="{StaticResource PrimaryButton}"
@@ -271,6 +274,22 @@
                                                     </TextBlock>
                                                 </StackPanel>
                                             </CheckBox>
+                                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                                <StackPanel.Style>
+                                                    <Style TargetType="StackPanel">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding PassBadge}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </StackPanel.Style>
+                                                <Border CornerRadius="4" Padding="6,1" Background="{Binding PassColor}">
+                                                    <TextBlock Text="{Binding PassBadge}" FontSize="11" FontWeight="Bold" Foreground="White"/>
+                                                </Border>
+                                                <TextBlock Text="{Binding PassDetail}" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextMuted}"/>
+                                            </StackPanel>
                                             <TextBlock Text="{Binding Hint}" FontSize="12" FontWeight="SemiBold"
                                                        Foreground="{StaticResource Accent}" Margin="0,4,0,0">
                                                 <TextBlock.Style>
