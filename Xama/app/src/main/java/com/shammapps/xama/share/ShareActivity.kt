@@ -128,7 +128,7 @@ class ShareActivity : AppCompatActivity() {
         progressText = text("", 13f, color = 0xFFB0B0B0.toInt())
         status = text("", 14f, color = 0xFFE0E0E0.toInt())
     }
-    private fun setStatus(t: String) = main.post { status.text = t }
+    private fun setStatus(t: String) { main.post { status.text = t } }
 
     private val listener = object : ShareListener {
         private var lastUi = 0L
@@ -152,7 +152,6 @@ class ShareActivity : AppCompatActivity() {
                 if (ok) progress.progress = 1000
                 client?.received?.takeIf { it.isNotEmpty() }?.let { files ->
                     MediaScannerConnection.scanFile(this@ShareActivity, files.map { it.absolutePath }.toTypedArray(), null, null)
-                    LibraryCache.lastScanMs = 0L
                 }
                 Toast.makeText(this@ShareActivity, text, Toast.LENGTH_LONG).show()
             }
