@@ -1,0 +1,7 @@
+# Statically link the MSVC CRT so shamm_crypto.dll does not need vcruntime140.dll /
+# msvcp140.dll on the shop PC (a common cause of "Dll was not found" / load failures).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.i686-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -2,31 +2,73 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>XamaMaster</AssemblyName>
+    <ApplicationIcon>Assets\xamamaster.ico</ApplicationIcon>
+    <Product>Shamm Master</Product>
+    <Company>Shamm</Company>
+    <Version>0.5.1</Version>
 
-    <!-- Produces one portable .exe with no separate .dll files to distribute,
-         and no .NET install required on the machine that runs it - matters
-         since this is an early-stage, unsigned, no-installer build. -->
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- shamm_crypto.dll from Phase 1, dropped in next to the exe at build time
-         by the GitHub Actions workflow - see build-xama-master.yml -->
+    <!-- Must sit NEXT TO the exe (not inside the single-file bundle) or DllImport fails. -->
     <None Include="shamm_crypto.dll" Condition="Exists('shamm_crypto.dll')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
+    <Resource Include="Assets\xamamaster.ico" Condition="Exists('Assets\xamamaster.ico')" />
   </ItemGroup>
+
+  <Target Name="PublishX86" AfterTargets="Publish"
+          Condition="'$(OS)' == 'Windows_NT' And '$(RuntimeIdentifier)' == 'win-x64' And '$(XamaMasterNoExtra)' != 'true'">
+    <PropertyGroup>
+      <CryptoDir>$(MSBuildProjectDirectory)\..\crypto-core</CryptoDir>
+      <DotnetExe Condition="'$(DOTNET_HOST_PATH)' != ''">$(DOTNET_HOST_PATH)</DotnetExe>
+      <DotnetExe Condition="'$(DotnetExe)' == ''">dotnet</DotnetExe>
+      <X86Out>$([System.IO.Path]::GetFullPath('$(PublishDir)'))x86</X86Out>
+    </PropertyGroup>
+    <Exec Command="rustup target add i686-pc-windows-msvc" WorkingDirectory="$(CryptoDir)" ContinueOnError="WarnAndContinue" />
+    <Exec Command="cargo build --release --target i686-pc-windows-msvc" WorkingDirectory="$(CryptoDir)" ContinueOnError="WarnAndContinue" />
+    <Exec Command="&quot;$(DotnetExe)&quot; publish &quot;$(MSBuildProjectFullPath)&quot; -c $(Configuration) -r win-x86 --self-contained true -o &quot;$(X86Out)&quot; -p:XamaMasterNoExtra=true -p:RuntimeIdentifier=win-x86"
+          ContinueOnError="WarnAndContinue" />
+    <Copy SourceFiles="$(CryptoDir)\target\i686-pc-windows-msvc\release\shamm_crypto.dll" DestinationFolder="$(X86Out)"
+          Condition="Exists('$(CryptoDir)\target\i686-pc-windows-msvc\release\shamm_crypto.dll')" ContinueOnError="WarnAndContinue" />
+  </Target>
+
+  <Target Name="BuildInnoInstallers" AfterTargets="Publish"
+          Condition="'$(OS)' == 'Windows_NT' And '$(XamaMasterNoExtra)' != 'true'">
+    <PropertyGroup>
+      <_Pub>$([System.IO.Path]::GetFullPath('$(PublishDir)'))</_Pub>
+      <_X86>$(_Pub)x86</_X86>
+      <_Ps1>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\installer\build-installers.ps1'))</_Ps1>
+    </PropertyGroup>
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\crypto-core\target\release\shamm_crypto.dll"
+          DestinationFolder="$(_Pub)" Condition="Exists('$(MSBuildProjectDirectory)\..\crypto-core\target\release\shamm_crypto.dll')" ContinueOnError="WarnAndContinue" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\crypto-core\target\x86_64-pc-windows-msvc\release\shamm_crypto.dll"
+          DestinationFolder="$(_Pub)" Condition="Exists('$(MSBuildProjectDirectory)\..\crypto-core\target\x86_64-pc-windows-msvc\release\shamm_crypto.dll')" ContinueOnError="WarnAndContinue" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(_Ps1)&quot; -App xamamaster -SourceDir &quot;$(_Pub.TrimEnd('\'))&quot; -X86Dir &quot;$(_X86)&quot;"
+          />
+    <MakeDir Directories="$(_Pub)installers" />
+    <ItemGroup>
+      <_Setups Include="$(MSBuildProjectDirectory)\..\installer\output\ShammMaster-Setup-*.exe" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_Setups)" DestinationFolder="$(_Pub)installers" />
+  </Target>
 
 </Project>

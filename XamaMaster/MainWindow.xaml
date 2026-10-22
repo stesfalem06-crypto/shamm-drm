@@ -1,4 +1,4 @@
-<Window x:Class="XamaMaster.MainWindow"
+<Window Icon="pack://application:,,,/Assets/xamamaster.ico" x:Class="XamaMaster.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Xama Master" Height="700" Width="1080"
@@ -25,9 +25,14 @@
                 <TextBlock Text="  ·  encrypt &amp; price your catalog" FontSize="16" Foreground="{StaticResource TextMuted}"
                            VerticalAlignment="Center" Margin="4,4,0,0"/>
             </StackPanel>
-            <Button Grid.Column="1" Content="Settlement…" Style="{StaticResource PrimaryButton}"
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <Button Content="Agents &amp; closings…" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"
+                        VerticalAlignment="Top" Click="OpenPlatformTools_Click"
+                        ToolTip="Create agent credentials, verify closing receipt codes, import signed closing files"/>
+                <Button Content="Settlement…" Style="{StaticResource PrimaryButton}"
                     Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
                     VerticalAlignment="Top" Click="OpenSettlement_Click"/>
+            </StackPanel>
         </Grid>
 
         <Border Grid.Row="1" Background="{StaticResource BgPanel}" CornerRadius="14" Padding="20" Margin="0,0,0,16">
@@ -40,7 +45,7 @@
                     <ColumnDefinition Width="150"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                    <TextBlock Text="Video title" Foreground="{StaticResource TextMuted}" FontSize="12" Margin="2,0,0,4"/>
+                    <TextBlock Text="Title (video or PDF)" Foreground="{StaticResource TextMuted}" FontSize="12" Margin="2,0,0,4"/>
                     <TextBox x:Name="TitleBox" Height="38" ToolTip="Leave blank to use the file name"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Margin="0,0,12,0">
@@ -76,7 +81,7 @@
                             <GridViewColumn Header="Title" Width="340" DisplayMemberBinding="{Binding Title}"/>
                             <GridViewColumn Header="Price" Width="80" DisplayMemberBinding="{Binding TokenPrice}"/>
                             <GridViewColumn Header="Format" Width="100" DisplayMemberBinding="{Binding FormatLabel}"/>
-                            <GridViewColumn Header="Video ID" Width="240" DisplayMemberBinding="{Binding VideoId}"/>
+                            <GridViewColumn Header="ID" Width="240" DisplayMemberBinding="{Binding VideoId}"/>
                             <GridViewColumn Header="Encrypted" Width="180" DisplayMemberBinding="{Binding EncryptedAtUtc}"/>
                         </GridView>
                     </ListView.View>
@@ -87,7 +92,7 @@
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="40">
                     <TextBlock Text="No videos yet" FontSize="18" FontWeight="SemiBold"
                                Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center"/>
-                    <TextBlock Text="Choose a video file, set a title and token price, then click Encrypt &amp; Add.&#10;Encrypted packages appear here ready to copy to shops."
+                    <TextBlock Text="Choose a video or PDF, set a title and token price, then click Encrypt &amp; Add.&#10;Encrypted packages appear here ready to copy to shops."
                                Foreground="{StaticResource TextMuted}" TextAlignment="Center" Margin="0,10,0,0"
                                TextWrapping="Wrap" MaxWidth="420" LineHeight="22"/>
                 </StackPanel>

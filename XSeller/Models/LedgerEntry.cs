@@ -13,4 +13,13 @@ public class LedgerEntry
     public int TokenPrice { get; set; }
     public DateTime SentAtUtc { get; set; }
     public bool Settled { get; set; } // flipped to true when the agent reconciles via USB (Phase 5)
+
+    // ---- Sales attribution (accounts feature). Old rows: "default" user / shop.
+    public string UserId { get; set; } = Services.Session.DefaultUserId;
+    public string UserName { get; set; } = Services.Session.DefaultUserName;
+    public string ShopId { get; set; } = "";
+    /// <summary>"protected" (billed to the platform via settlement) or "plain".</summary>
+    public string Kind { get; set; } = "protected";
+    /// <summary>Category for plain sales: video/pdf/image/exe/other (protected: "protected").</summary>
+    public string Category { get; set; } = "protected";
 }
