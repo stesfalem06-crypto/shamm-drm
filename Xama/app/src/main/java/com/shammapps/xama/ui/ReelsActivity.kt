@@ -62,6 +62,8 @@ class ReelsActivity : AppCompatActivity() {
             }
         }
 
+        // One decoder/audio owner: pause any background session before Reels takes over.
+        runCatching { com.shammapps.xama.player.PlaybackService.instance?.currentPlayer()?.let { if (it.isPlaying) it.pause() } }
         val resolver = ShammKeyResolver(this)
         adapter = ReelsAdapter(videos, resolver) { pos, positionMs ->
             val v = videos.getOrNull(pos)
@@ -103,9 +105,16 @@ class ReelsActivity : AppCompatActivity() {
         }
     }
 
+    override fun onDestroy() {
+        if (::adapter.isInitialized) adapter.releaseAll()
+        if (::pager.isInitialized) pager.adapter = null
+        super.onDestroy()
+    }
+
     override fun onPause() {
         super.onPause()
         if (!::pager.isInitialized) return
+        if (isFinishing && ::adapter.isInitialized) { adapter.releaseAll(); return }
         val holder = recycler()?.findViewHolderForAdapterPosition(pager.currentItem)
         if (holder is ReelsAdapter.ReelHolder) adapter.setPlaying(holder, false)
     }

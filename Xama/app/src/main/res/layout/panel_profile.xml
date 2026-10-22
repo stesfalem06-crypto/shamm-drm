@@ -214,6 +214,32 @@
                     app:tint="@color/text_muted" android:importantForAccessibility="no"/>
             </LinearLayout>
 
+            <LinearLayout android:id="@+id/rowShareReceive" android:layout_width="match_parent" android:layout_height="60dp"
+                android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/row_ripple"
+                android:paddingStart="12dp" android:paddingEnd="12dp">
+                <FrameLayout android:layout_width="36dp" android:layout_height="36dp" android:background="@drawable/icon_tile">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center"
+                        android:src="@drawable/ic_wifi_share" app:tint="@color/accent" android:importantForAccessibility="no"/>
+                </FrameLayout>
+                <TextView style="@style/Text.Body" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:layout_marginStart="14dp" android:text="Receive from nearby Xama (offline)"/>
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_chevron_right"
+                    app:tint="@color/text_muted" android:importantForAccessibility="no"/>
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/rowSharePartners" android:layout_width="match_parent" android:layout_height="60dp"
+                android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/row_ripple"
+                android:paddingStart="12dp" android:paddingEnd="12dp">
+                <FrameLayout android:layout_width="36dp" android:layout_height="36dp" android:background="@drawable/icon_tile">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center"
+                        android:src="@drawable/ic_phone" app:tint="@color/accent" android:importantForAccessibility="no"/>
+                </FrameLayout>
+                <TextView style="@style/Text.Body" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:layout_marginStart="14dp" android:text="Share partners &amp; family"/>
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_chevron_right"
+                    app:tint="@color/text_muted" android:importantForAccessibility="no"/>
+            </LinearLayout>
+
             <LinearLayout android:id="@+id/rowUsbSetup" android:layout_width="match_parent" android:layout_height="60dp"
                 android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/row_ripple"
                 android:paddingStart="12dp" android:paddingEnd="12dp">

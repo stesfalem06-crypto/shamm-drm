@@ -158,6 +158,10 @@
 
             <ImageButton android:id="@+id/btnSubtitles" style="@style/PlayerIconButton"
                 android:src="@drawable/ic_subtitles" android:contentDescription="Subtitles"/>
+            <ImageButton android:id="@+id/btnLike" style="@style/PlayerIconButton"
+                android:src="@drawable/ic_heart_outline" android:contentDescription="Like"/>
+            <ImageButton android:id="@+id/btnFav" style="@style/PlayerIconButton"
+                android:src="@drawable/ic_bookmark_outline" android:contentDescription="Add to favorites"/>
             <ImageButton android:id="@+id/btnBackgroundPlay" style="@style/PlayerIconButton"
                 android:src="@drawable/ic_headset" android:contentDescription="Play in background"/>
             <ImageButton android:id="@+id/btnAudioTrack" style="@style/PlayerIconButton"

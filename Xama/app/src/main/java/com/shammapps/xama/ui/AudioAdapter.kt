@@ -15,6 +15,7 @@ import com.shammapps.xama.util.ThumbLoader
 class AudioAdapter(
     private val tracks: List<LocalVideo>,
     private val nowPlayingId: String?,
+    private val onLong: ((LocalVideo) -> Unit)? = null,
     private val onPlay: (index: Int, shuffle: Boolean) -> Unit,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
@@ -64,6 +65,7 @@ class AudioAdapter(
         holder.duration.text = if (track.durationMs > 0) Ui.formatDuration(track.durationMs) else ""
         ThumbLoader.load(ctx, track, holder.art, "art-" + track.id)
         holder.itemView.setOnClickListener { onPlay(index, false) }
+        holder.itemView.setOnLongClickListener { onLong?.invoke(track); onLong != null }
     }
 
     override fun getItemCount() = if (tracks.isEmpty()) 0 else tracks.size + 1

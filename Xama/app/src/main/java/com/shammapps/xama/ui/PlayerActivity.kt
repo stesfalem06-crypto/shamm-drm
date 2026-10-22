@@ -213,7 +213,7 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     // Gesture state
-    private enum class GestureMode { NONE, SEEK, BRIGHTNESS, VOLUME }
+    private enum class GestureMode { NONE, SEEK, BRIGHTNESS, VOLUME, SWIPE_ITEM }
     private var gestureMode = GestureMode.NONE
     private var downX = 0f
     private var downY = 0f
@@ -270,12 +270,31 @@ class PlayerActivity : AppCompatActivity() {
 
         override fun onPlayerError(error: PlaybackException) {
             spinner.visibility = View.GONE
+            val decoderErr = error.errorCode in intArrayOf(
+                PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+                PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+                PlaybackException.ERROR_CODE_DECODING_FAILED,
+                PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+                PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+            )
+            if (decoderErr && retriedIndex != index) {
+                // A decoder may still be held by a player that is shutting down (Reels / previous
+                // item / background session). Free ours, wait a moment, rebuild once.
+                retriedIndex = index
+                val pos = player?.currentPosition ?: lastKnownPosition
+                releasePlayer()
+                spinner.visibility = View.VISIBLE
+                handler.postDelayed({ if (!isFinishing) loadItem(index, initial = false, startPositionMs = pos) }, 400)
+                return
+            }
             showError(error)
         }
 
         override fun onVideoSizeChanged(videoSize: VideoSize) {
             if (videoSize.width <= 0 || videoSize.height <= 0) return
             videoAspect = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+            // Decoded size is already rotation-corrected by media3 (unappliedRotationDegrees is handled by the view).
+            setVerticalMode(videoAspect < 0.95f)
             if (rotation == Rotation.AUTO_VIDEO) applyRotation()
             updatePipParams()
         }
@@ -337,6 +356,7 @@ class PlayerActivity : AppCompatActivity() {
             if (r - l != or - ol || b - t != ob - ot) root.post { applyAspect() }
         }
 
+        runCatching { com.shammapps.xama.player.PlaybackService.instance?.currentPlayer()?.let { if (it.isPlaying) it.pause() } }
         val startPos = intent.getLongExtra(EXTRA_START_POSITION, -1L)
         loadItem(index, initial = true, startPositionMs = if (startPos >= 0) startPos else null)
         showControls()
@@ -360,6 +380,27 @@ class PlayerActivity : AppCompatActivity() {
             goBackground(userInitiated = false)
         }
         player?.pause()
+        // One decoder owner: free the video decoder while we're not visible (not in PiP / handed off).
+        if (!handedOff && !isInPipCompat() && player != null) {
+            lastKnownPosition = player?.currentPosition ?: lastKnownPosition
+            releasePlayer()
+            releasedInStop = true
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (releasedInStop && !handedOff && playlist.isNotEmpty()) {
+            releasedInStop = false
+            loadItem(index, initial = false, startPositionMs = lastKnownPosition)
+            player?.playWhenReady = false
+            updatePlayPause()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (isFinishing) { savePosition(); releasePlayer() }
     }
 
     private var handedOff = false
@@ -578,9 +619,13 @@ class PlayerActivity : AppCompatActivity() {
     // ---------------------------------------------------------------- playback
 
     private var lastKnownPosition = 0L
+    private var retriedIndex = -1
+    private var releasedInStop = false
+    private var verticalMode = false
 
     private fun buildPlayer(): ExoPlayer {
-        val exo = ExoPlayer.Builder(this)
+        val renderers = androidx.media3.exoplayer.DefaultRenderersFactory(this).setEnableDecoderFallback(true)
+        val exo = ExoPlayer.Builder(this, renderers)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -609,6 +654,7 @@ class PlayerActivity : AppCompatActivity() {
         player?.let {
             lastKnownPosition = it.currentPosition
             it.removeListener(playerListener)
+            runCatching { it.stop(); it.clearMediaItems() }
             it.release()
         }
         player = null
@@ -689,6 +735,16 @@ class PlayerActivity : AppCompatActivity() {
             exo.playWhenReady = true
         }
         updatePrevNext()
+        setVerticalMode(item.isVertical)
+        applyAspect()
+    }
+
+    /** Reels-style UI for vertical videos: portrait, full-bleed, swipe up/down = next/prev,
+     *  sideways swipe = brightness (left) / volume (right). Same player instance, no re-create. */
+    private fun setVerticalMode(on: Boolean) {
+        if (on == verticalMode) return
+        verticalMode = on
+        applyRotation()
         applyAspect()
     }
 
@@ -756,9 +812,29 @@ class PlayerActivity : AppCompatActivity() {
     private fun bindTitle(item: LocalVideo) {
         titleText.text = item.title
         findViewById<View>(R.id.btnBackgroundPlay)?.alpha = if (BackgroundPlay.isAllowed(item)) 1f else 0.4f
+        bindMarks(item)
         subtitleText.text = buildString {
             if (item.isEncrypted) append("Protected") else append(item.folderName.takeIf { it.isNotBlank() && it != "Other" } ?: "Video")
             if (playlist.size > 1) append(" · ${index + 1} of ${playlist.size}")
+        }
+    }
+
+    private fun bindMarks(item: LocalVideo) {
+        val liked = com.shammapps.xama.data.Favorites.isLiked(this, item.id)
+        val fav = com.shammapps.xama.data.Favorites.isFav(this, item.id)
+        findViewById<ImageButton>(R.id.btnLike)?.apply {
+            setImageResource(if (liked) R.drawable.ic_heart else R.drawable.ic_heart_outline)
+            setColorFilter(if (liked) 0xFFFF2D55.toInt() else 0xFFFFFFFF.toInt())
+            setOnClickListener { com.shammapps.xama.data.Favorites.toggle(this@PlayerActivity, com.shammapps.xama.data.Favorites.LIKED, item.id); bindMarks(item) }
+        }
+        findViewById<ImageButton>(R.id.btnFav)?.apply {
+            setImageResource(if (fav) R.drawable.ic_bookmark else R.drawable.ic_bookmark_outline)
+            setColorFilter(if (fav) 0xFFFFC107.toInt() else 0xFFFFFFFF.toInt())
+            setOnClickListener {
+                val on = com.shammapps.xama.data.Favorites.toggle(this@PlayerActivity, com.shammapps.xama.data.Favorites.FAV, item.id)
+                Toast.makeText(this@PlayerActivity, if (on) "Added to Favorites" else "Removed from Favorites", Toast.LENGTH_SHORT).show()
+                bindMarks(item)
+            }
         }
     }
 
@@ -1136,7 +1212,13 @@ class PlayerActivity : AppCompatActivity() {
                     val edge = Ui.dp(this, 40)
                     if (downY < edge || downY > root.height - edge) return
                     val slop = touchSlop * 1.5f
-                    if (abs(dx) > slop && abs(dx) > abs(dy) * 1.3f) {
+                    if (verticalMode) {
+                        if (abs(dx) > slop && abs(dx) > abs(dy) * 1.3f) {
+                            gestureMode = if (downX < root.width / 2f) GestureMode.BRIGHTNESS else GestureMode.VOLUME
+                        } else if (abs(dy) > slop && abs(dy) > abs(dx) * 1.3f) {
+                            gestureMode = GestureMode.SWIPE_ITEM
+                        }
+                    } else if (abs(dx) > slop && abs(dx) > abs(dy) * 1.3f) {
                         val dur = p?.duration ?: C.TIME_UNSET
                         if (dur != C.TIME_UNSET && dur > 0) gestureMode = GestureMode.SEEK
                     } else if (abs(dy) > slop && abs(dy) > abs(dx) * 1.3f) {
@@ -1145,8 +1227,12 @@ class PlayerActivity : AppCompatActivity() {
                     if (gestureMode != GestureMode.NONE) handler.removeCallbacks(hideIndicatorsRunnable)
                 }
                 when (gestureMode) {
+                    GestureMode.SWIPE_ITEM -> {
+                        playerView.translationY = -dy * 0.35f
+                    }
                     GestureMode.BRIGHTNESS -> {
-                        val b = (startBrightness + dy / (root.height * 0.8f)).coerceIn(0.01f, 1f)
+                        val d = if (verticalMode) dx / (root.width * 0.8f) * root.height else dy
+                        val b = (startBrightness + d / (root.height * 0.8f)).coerceIn(0.01f, 1f)
                         val lp = window.attributes
                         lp.screenBrightness = b
                         window.attributes = lp
@@ -1154,7 +1240,8 @@ class PlayerActivity : AppCompatActivity() {
                     }
                     GestureMode.VOLUME -> {
                         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-                        val v = (startVolume + dy / (root.height * 0.8f) * max).coerceIn(0f, max.toFloat())
+                        val d = if (verticalMode) dx / (root.width * 0.8f) * root.height else dy
+                        val v = (startVolume + d / (root.height * 0.8f) * max).coerceIn(0f, max.toFloat())
                         val iv = v.toInt()
                         if (iv != audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) {
                             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, iv, 0)
@@ -1179,6 +1266,13 @@ class PlayerActivity : AppCompatActivity() {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (gestureMode == GestureMode.SEEK) p?.seekTo(seekTargetMs)
+                if (gestureMode == GestureMode.SWIPE_ITEM) {
+                    playerView.animate().translationY(0f).setDuration(150).start()
+                    val dy = downY - ev.y
+                    if (ev.actionMasked == MotionEvent.ACTION_UP && abs(dy) > root.height * 0.15f) {
+                        if (dy > 0) { if (index < playlist.size - 1) playNext(true) } else if (index > 0) playPrevious()
+                    }
+                }
                 if (gestureMode != GestureMode.NONE) {
                     handler.removeCallbacks(hideIndicatorsRunnable)
                     handler.postDelayed(hideIndicatorsRunnable, 600)
@@ -1226,6 +1320,15 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun applyAspect() {
+        if (verticalMode) {
+            val vlp = playerView.layoutParams as FrameLayout.LayoutParams
+            vlp.width = FrameLayout.LayoutParams.MATCH_PARENT
+            vlp.height = FrameLayout.LayoutParams.MATCH_PARENT
+            playerView.layoutParams = vlp
+            playerView.resizeMode = if (aspect == Aspect.FIT) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else
+                when (aspect) { Aspect.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL; else -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM }
+            return
+        }
         val w = root.width
         val h = root.height
         val lp = playerView.layoutParams as FrameLayout.LayoutParams
@@ -1264,6 +1367,7 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun applyRotation() {
+        if (verticalMode) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT; return }
         requestedOrientation = when (rotation) {
             Rotation.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             Rotation.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT

@@ -96,6 +96,7 @@ class MxVideoAdapter(
     /** false = compact list rows, true = large 16:9 thumbnail cards. */
     private val cards: Boolean,
     private val watched: Set<String>,
+    private val onLong: ((LocalVideo) -> Unit)? = null,
     private val onClick: (LocalVideo) -> Unit,
 ) : RecyclerView.Adapter<MxVideoAdapter.Holder>() {
 
@@ -137,6 +138,7 @@ class MxVideoAdapter(
         holder.badge.visibility = if (MxFormat.isNew(ctx, v, watched)) View.VISIBLE else View.GONE
         ThumbLoader.load(ctx, v, holder.thumb, "mx-${v.id}")
         holder.itemView.setOnClickListener { onClick(v) }
+        holder.itemView.setOnLongClickListener { onLong?.invoke(v); onLong != null }
     }
 
     override fun getItemCount() = items.size

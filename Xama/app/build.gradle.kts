@@ -11,8 +11,8 @@ android {
         applicationId = "com.shammapps.xama"
         minSdk = 24
         targetSdk = 34
-        versionCode = 10
-        versionName = "0.5.3"
+        versionCode = 11
+        versionName = "0.5.4"
     }
 
     buildTypes {
@@ -67,4 +67,6 @@ dependencies {
     implementation("com.scottyab:rootbeer-lib:0.1.0")
 
     implementation("com.google.code.gson:gson:2.11.0")
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0") { isTransitive = false }
 }

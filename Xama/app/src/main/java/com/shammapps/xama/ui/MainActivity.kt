@@ -93,16 +93,21 @@ class MainActivity : AppCompatActivity() {
         tab == Tab.PROTECTED -> "protected"
         tab == Tab.REELS -> if (openReelsFolder != null) "reels_folder" else "reels"
         openFolder != null -> "folder"
+        special[Tab.VIDEOS] != null -> "videos_special"
+        query.isEmpty() && !videosByFolder -> "videos_all"
         else -> "search"
     }
     private fun cardsFor(key: String = videoScreenKey()) = prefs.getBoolean("cards_$key", false)
     private fun isVideoListScreen(): Boolean =
-        tab == Tab.PROTECTED || (tab == Tab.REELS && (!reelsByFolder || openReelsFolder != null)) ||
-            (tab == Tab.VIDEOS && (openFolder != null || query.isNotEmpty()))
+        tab == Tab.PROTECTED || (tab == Tab.REELS && (!reelsByFolder || openReelsFolder != null || special[Tab.REELS] != null)) ||
+            (tab == Tab.VIDEOS && (openFolder != null || query.isNotEmpty() || !videosByFolder || special[Tab.VIDEOS] != null))
     private var reelsByFolder = false
     /** Drilled-in Reels folder (Reels > Folders > folder). */
     private var openReelsFolder: VideoFolder? = null
     private var musicByFolder = false
+    private var videosByFolder = true
+    /** Liked / Favorites category per tab (null = All/Folders). */
+    private val special = HashMap<Tab, String>()
     private var pendingFolderName: String? = null
     private var gridMode = false
     private var sort = Sort.DATE
@@ -150,6 +155,7 @@ class MainActivity : AppCompatActivity() {
         sortDescending = prefs.getBoolean("sort_desc", true)
         reelsByFolder = prefs.getBoolean("reels_by_folder", false)
         musicByFolder = prefs.getBoolean("music_by_folder", false)
+        videosByFolder = prefs.getBoolean("videos_by_folder", true)
 
         savedInstanceState?.let { s ->
             tab = Tab.values().getOrElse(s.getInt(STATE_TAB, 0)) { Tab.VIDEOS }
@@ -205,7 +211,12 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.navReels).setOnClickListener { switchTab(Tab.REELS) }
         findViewById<View>(R.id.modeAll).setOnClickListener { setByFolder(false) }
         findViewById<View>(R.id.modeFolders).setOnClickListener { setByFolder(true) }
-        findViewById<View>(R.id.modePlay).setOnClickListener { openReels(reelsFeed(videos), null) }
+        findViewById<View>(R.id.modeLiked).setOnClickListener { setSpecial(com.shammapps.xama.data.Favorites.LIKED) }
+        findViewById<View>(R.id.modeFav).setOnClickListener { setSpecial(com.shammapps.xama.data.Favorites.FAV) }
+        findViewById<View>(R.id.modePlay).setOnClickListener {
+            val sp = special[Tab.REELS]
+            openReels(if (sp != null) specialItems(Tab.REELS, sp) else reelsFeed(videos), null)
+        }
         findViewById<View>(R.id.rowScanAll).setOnClickListener { toggleScanAll() }
         findViewById<View>(R.id.rowBgContinue).setOnClickListener {
             val on = !com.shammapps.xama.player.BackgroundPlay.continueOnLeave(this)
@@ -218,6 +229,8 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<View>(R.id.rowAbout).setOnClickListener { openAbout() }
         findViewById<View>(R.id.rowUsbSetup).setOnClickListener { openUsbSetup() }
+        findViewById<View>(R.id.rowShareReceive).setOnClickListener { com.shammapps.xama.share.ShareActivity.receive(this) }
+        findViewById<View>(R.id.rowSharePartners).setOnClickListener { com.shammapps.xama.share.ShareActivity.partners(this) }
         findViewById<View>(R.id.rowRescan).setOnClickListener { rescan() }
         findViewById<View>(R.id.rowClearHistory).setOnClickListener {
             WatchHistory.clear(this)
@@ -687,9 +700,39 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        val sp = special[tab]
+        if (sp != null && tab in setOf(Tab.VIDEOS, Tab.REELS, Tab.MUSIC)) {
+            header.text = if (sp == com.shammapps.xama.data.Favorites.LIKED) "Liked" else "Favorites"
+            val items = specialItems(tab, sp)
+            if (items.isEmpty()) { showEmpty(specialEmpty(sp)); return }
+            sub.visibility = View.VISIBLE
+            sub.text = "${items.size} item" + if (items.size == 1) "" else "s"
+            list.visibility = View.VISIBLE
+            when (tab) {
+                Tab.MUSIC -> {
+                    list.layoutManager = LinearLayoutManager(this)
+                    list.adapter = AudioAdapter(items, controller?.currentMediaItem?.mediaId, ::showItemSheet) { index, shuffle ->
+                        AudioPlayerActivity.start(this, items, index, shuffle)
+                    }
+                }
+                Tab.REELS -> {
+                    val cards = cardsFor("reels")
+                    list.layoutManager = if (cards) GridLayoutManager(this, cardSpan()) else LinearLayoutManager(this)
+                    list.adapter = MxVideoAdapter(items, cards, watched, ::showItemSheet) { v -> openReels(items, v) }
+                }
+                else -> showVideos(list, items, watched, false)
+            }
+            if (animate) animateList(list)
+            return
+        }
+
         when (tab) {
             Tab.VIDEOS -> {
                 header.text = getString(R.string.app_name)
+                if (!videosByFolder && query.isEmpty()) {
+                    showVideos(list, sortVideos(videos.filter { !it.isAudio }), watched, animate)
+                    return
+                }
                 if (query.isNotEmpty()) {
                     // Search across all videos, like the classic players do.
                     showVideos(list, sortVideos(videos.filter { matches(it) }).take(500), watched, animate)
@@ -742,7 +785,7 @@ class MainActivity : AppCompatActivity() {
                         val cards = cardsFor(key)
                         list.layoutManager = if (cards) GridLayoutManager(this, cardSpan()) else LinearLayoutManager(this)
                         // Feed starts at the tapped video; swiping stays within this list (folder).
-                        list.adapter = MxVideoAdapter(feed, cards, watched) { v -> openReels(feed, v) }
+                        list.adapter = MxVideoAdapter(feed, cards, watched, ::showItemSheet) { v -> openReels(feed, v) }
                         if (animate) animateList(list)
                     }
                 }
@@ -768,7 +811,7 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         list.visibility = View.VISIBLE
                         list.layoutManager = LinearLayoutManager(this)
-                        list.adapter = AudioAdapter(tracks, controller?.currentMediaItem?.mediaId) { index, shuffle ->
+                        list.adapter = AudioAdapter(tracks, controller?.currentMediaItem?.mediaId, ::showItemSheet) { index, shuffle ->
                             AudioPlayerActivity.start(this, tracks, index, shuffle)
                         }
                         if (animate) animateList(list)
@@ -797,7 +840,7 @@ class MainActivity : AppCompatActivity() {
         list.visibility = View.VISIBLE
         val cards = cardsFor()
         list.layoutManager = if (cards) GridLayoutManager(this, cardSpan()) else LinearLayoutManager(this)
-        list.adapter = MxVideoAdapter(items, cards, watched) { openVideo(it, items) }
+        list.adapter = MxVideoAdapter(items, cards, watched, ::showItemSheet) { openVideo(it, items) }
         if (animate) animateList(list)
     }
 
@@ -897,21 +940,69 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateModeBar() {
         val bar = findViewById<View>(R.id.modeBar)
-        val show = ((tab == Tab.REELS && openReelsFolder == null) || (tab == Tab.MUSIC && openMusicFolder == null)) && !searchOpen
+        val show = ((tab == Tab.REELS && openReelsFolder == null) || (tab == Tab.MUSIC && openMusicFolder == null) ||
+            (tab == Tab.VIDEOS && openFolder == null)) && !searchOpen
         bar.visibility = if (show) View.VISIBLE else View.GONE
         if (!show) return
-        val byFolder = if (tab == Tab.REELS) reelsByFolder else musicByFolder
+        val sp = special[tab]
+        val byFolder = when (tab) { Tab.REELS -> reelsByFolder; Tab.VIDEOS -> videosByFolder; else -> musicByFolder }
         fun style(id: Int, selected: Boolean) {
             val v = findViewById<TextView>(id)
             v.setBackgroundResource(if (selected) R.drawable.chip_selected else R.drawable.chip_unselected)
             v.setTextColor(if (selected) 0xFFFFFFFF.toInt() else ContextCompat.getColor(this, R.color.text_secondary))
         }
-        style(R.id.modeAll, !byFolder)
-        style(R.id.modeFolders, byFolder)
-        findViewById<View>(R.id.modePlay).visibility = if (tab == Tab.REELS && !byFolder) View.VISIBLE else View.GONE
+        style(R.id.modeAll, !byFolder && sp == null)
+        style(R.id.modeFolders, byFolder && sp == null)
+        style(R.id.modeLiked, sp == com.shammapps.xama.data.Favorites.LIKED)
+        style(R.id.modeFav, sp == com.shammapps.xama.data.Favorites.FAV)
+        findViewById<View>(R.id.modePlay).visibility = if (tab == Tab.REELS && (!byFolder || sp != null)) View.VISIBLE else View.GONE
+    }
+
+    private fun setSpecial(key: String) {
+        special[tab] = key
+        openReelsFolder = null; openMusicFolder = null; openFolder = null
+        render(animate = true)
+    }
+
+    private fun specialItems(t: Tab, key: String): List<LocalVideo> = when (t) {
+        Tab.MUSIC -> com.shammapps.xama.data.Favorites.resolve(this, key, audio) { it.id }
+        Tab.REELS -> reelsFeed(com.shammapps.xama.data.Favorites.resolve(this, key, videos) { it.id })
+        else -> com.shammapps.xama.data.Favorites.resolve(this, key, videos + docs) { it.id }.filter { !it.isAudio }
+    }.filter { matches(it) }
+
+    private fun specialEmpty(key: String) = Empty(
+        if (key == com.shammapps.xama.data.Favorites.LIKED) R.drawable.ic_heart_outline else R.drawable.ic_bookmark_outline,
+        if (key == com.shammapps.xama.data.Favorites.LIKED) "Nothing liked yet" else "No favorites yet",
+        if (key == com.shammapps.xama.data.Favorites.LIKED) "Double-tap a reel or tap the heart to like it."
+        else "Tap the bookmark in the player or Reels, or long-press an item.", null, null
+    )
+
+    /** Long-press menu on list items: like, favorite, share nearby. */
+    private fun showItemSheet(v: LocalVideo) {
+        val F = com.shammapps.xama.data.Favorites
+        val liked = F.isLiked(this, v.id); val fav = F.isFav(this, v.id)
+        val sheet = OptionSheet(this, v.title)
+        sheet.add(if (liked) "Unlike" else "Like", if (liked) R.drawable.ic_heart else R.drawable.ic_heart_outline) {
+            F.toggle(this, F.LIKED, v.id); render()
+        }
+        sheet.add(if (fav) "Remove from Favorites" else "Add to Favorites", if (fav) R.drawable.ic_bookmark else R.drawable.ic_bookmark_outline) {
+            F.toggle(this, F.FAV, v.id); render()
+        }
+        if (!v.isPdf || v.isEncrypted) sheet.add("Share nearby (offline)", R.drawable.ic_wifi_share) {
+            com.shammapps.xama.share.ShareActivity.send(this, listOf(v))
+        }
+        sheet.show()
     }
 
     private fun setByFolder(value: Boolean) {
+        special.remove(tab)
+        if (tab == Tab.VIDEOS) {
+            videosByFolder = value
+            openFolder = null
+            prefs.edit().putBoolean("videos_by_folder", value).apply()
+            render(animate = true)
+            return
+        }
         if (tab == Tab.REELS) {
             reelsByFolder = value
             openReelsFolder = null
