@@ -10,7 +10,7 @@
     <ApplicationIcon>Assets\xseller.ico</ApplicationIcon>
     <Product>X Seller</Product>
     <Company>Shamm</Company>
-    <Version>0.5.0</Version>
+    <Version>0.5.1</Version>
 
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

@@ -1,6 +1,6 @@
 ; Shamm Master (Xama Master) — Inno Setup 6. Same AppId → in-place upgrade; data under Documents\XamaMaster kept.
 #define MyAppName "Shamm Master"
-#define MyAppVersion "0.5.0"
+#define MyAppVersion "0.5.1"
 #define MyAppPublisher "Shamm"
 #define MyAppExeName "XamaMaster.exe"
 #ifndef Arch

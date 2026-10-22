@@ -1,7 +1,7 @@
 ; X Seller — Inno Setup 6. Same AppId across versions → installing a newer build upgrades in place
 ; (closes the running app, replaces files, keeps Documents\XSeller data + ProgramData backups).
 #define MyAppName "X Seller"
-#define MyAppVersion "0.5.0"
+#define MyAppVersion "0.5.1"
 #define MyAppPublisher "Shamm"
 #define MyAppExeName "XSeller.exe"
 #ifndef Arch

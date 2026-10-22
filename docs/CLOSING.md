@@ -46,3 +46,4 @@ Of the platform's share of revenue (default 50%), a configurable cut (default **
 
 ## Hidden backups
 See BACKUPS.md. Closing and diagnostics show backup health; a restore is logged as a `Kind=system` ledger entry.
+- Family group events (`Kind=family-event`) are ledger lines at price 0 (like pass events).

@@ -129,6 +129,12 @@ public sealed class BatchSender
                     (local, remoteName) => _mtp.PushProtectedPart(t.MtpId!, local, remoteName,
                         remoteName.EndsWith(".shammvid", StringComparison.OrdinalIgnoreCase) ? frac : null),
                     t.LedgerSerial, t.Model);
+                try
+                {
+                    var hex = Convert.ToHexString(fp).ToLowerInvariant();
+                    FamilyGroups.Instance?.WriteToPhone(_mtp, t.MtpId!, hex, Accounts.Instance.Get("shop_name") ?? "");
+                }
+                catch (Exception ex) { AdbService.Log("family file after send: " + ex.Message); }
                 return;
             }
             if (!AdbReady(t))

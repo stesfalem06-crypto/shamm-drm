@@ -220,6 +220,10 @@
                         <Button Content="Weekly pass…" Style="{StaticResource PrimaryButton}"
                                 Margin="0,0,0,8" Click="WeeklyPass_Click"
                                 ToolTip="Activate / manage a 7-day pass for the ticked phone (protected movies free, plain files charged)"/>
+                        <Button Content="Family group…" Style="{StaticResource PrimaryButton}"
+                                Background="{StaticResource AccentSoft}" Foreground="{StaticResource TextPrimary}"
+                                Margin="0,0,0,8" Click="FamilyGroup_Click"
+                                ToolTip="Register up to 3 phones so a protected movie unlocks on all of them"/>
                         <Button Content="Closing (platform agent)…" Style="{StaticResource PrimaryButton}"
                                 Margin="0,0,0,8" Click="Closing_Click"/>
                         <Button x:Name="AdminButton" Content="Admin dashboard…" Style="{StaticResource PrimaryButton}"

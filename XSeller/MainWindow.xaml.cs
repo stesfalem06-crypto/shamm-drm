@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private readonly SettlementExporter _settlement;
     private readonly Closings _closings;
     private readonly Passes _passes;
+    private readonly FamilyGroups _families;
     private readonly Dictionary<string, DateTime> _identityTried = new();
     private readonly LibraryIndex _index = new();
 
@@ -44,7 +45,9 @@ public partial class MainWindow : Window
         BackupService.StartPeriodic();
         _closings = new Closings(_ledger);
         _passes = new Passes(_ledger);
+        _families = new FamilyGroups(_ledger);
         _passes.Changed += () => Dispatcher.BeginInvoke(() => { UpdatePassBadges(); RefreshDebt(); });
+        _families.Changed += () => Dispatcher.BeginInvoke(UpdatePassBadges);
         var passTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
         passTimer.Tick += (_, _) => UpdatePassBadges();
         passTimer.Start();
@@ -55,6 +58,7 @@ public partial class MainWindow : Window
         LoadShopName();
         _settlement = new SettlementExporter(_ledger, _shopName);
         ShopNameText.Text = "·  " + _shopName;
+        try { Accounts.Instance.Set("shop_name", _shopName); } catch { }
 
         // Ensure canonical Library/Plain folders always exist for drops even if removed from index.
         try { Directory.CreateDirectory(FirstRunBootstrap.LibraryDir); } catch { }
@@ -1000,7 +1004,10 @@ public partial class MainWindow : Window
                 }
                 catch (Exception ex) { AdbService.Log("pass identity: " + ex.Message); }
                 if (id != null && mtpId != null)
+                {
                     _passes.WriteToPhone(_mtp, mtpId, id, _shopName);
+                    FamilyGroups.Instance?.WriteToPhone(_mtp, mtpId, id, _shopName);
+                }
                 Dispatcher.BeginInvoke(() =>
                 {
                     row.IdentityPending = false;
@@ -1082,5 +1089,20 @@ public partial class MainWindow : Window
             RefreshNow();
         }, refreshUi: RefreshNow);
         RefreshNow();
+    }
+
+    private void FamilyGroup_Click(object sender, RoutedEventArgs e)
+    {
+        var pre = _deviceRows.FirstOrDefault(r => r.IsChecked && r.DeviceId != null)?.DeviceId;
+        Views.FamilyWindow.Show(this, _families, _passes, IdentifiedPhones, pre, _shopName, g =>
+        {
+            if (g == null) return;
+            foreach (var r in _deviceRows.Where(r => r.MtpId != null && r.DeviceId != null && g.Phones.Any(p => p.DeviceId == r.DeviceId)).ToList())
+            {
+                try { _families.WriteToPhone(_mtp, r.MtpId!, r.DeviceId!, _shopName); }
+                catch (Exception ex) { AdbService.Log("family file: " + ex.Message); }
+            }
+            UpdatePassBadges();
+        });
     }
 }

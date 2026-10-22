@@ -47,28 +47,25 @@ public class TransferService
             if (rc != 0) throw new InvalidOperationException("Could not unlock package for shops.");
 
             var fingerprint = fingerprintProvider();
-            // Weekly pass (ledger/pricing only — the crypto below is unchanged).
-            var pass = Passes.Instance?.ActiveFor(Convert.ToHexString(fingerprint));
-            var deviceKey = new byte[NativeCrypto.KeyLen];
-            try
-            {
-                var rc2 = NativeCrypto.shamm_derive_device_key(
-                    fingerprint, (uint)fingerprint.Length, deviceKey, NativeCrypto.KeyLen);
-                if (rc2 != 0) throw new InvalidOperationException("Could not read this phone's identity.");
+            var targetHex = Convert.ToHexString(fingerprint).ToLowerInvariant();
+            // Weekly pass (pricing) + family / pass multi-recipient .shammkey (docs/FAMILY_GROUP.md).
+            var pass = Passes.Instance?.ActiveFor(targetHex);
+            var memberList = FamilyGroups.Instance?.RecipientsFor(targetHex, ledgerModel)
+                             ?? new List<(string DeviceIdHex, string Model)> { (targetHex, ledgerModel) };
+            if (!memberList.Any(r => r.DeviceIdHex == targetHex))
+                memberList = memberList.Append((targetHex, ledgerModel)).ToList();
+            var recipFp = memberList.Select(r => (MultiRecipientKey.FingerprintFromHex(r.DeviceIdHex), r.DeviceIdHex)).ToList();
+            var useV2 = memberList.Count > 1 || pass != null || FamilyGroups.Instance?.ForDevice(targetHex) != null;
 
-                var wrappedForPhone = new byte[NativeCrypto.WrappedKeyLen];
-                var rc3 = NativeCrypto.shamm_wrap_key(
-                    contentKey, NativeCrypto.KeyLen,
-                    deviceKey, NativeCrypto.KeyLen,
-                    wrappedForPhone, NativeCrypto.WrappedKeyLen);
-                if (rc3 != 0) throw new InvalidOperationException("Failed to lock video to the phone.");
+            {
+                var keyBytes = MultiRecipientKey.Build(contentKey, recipFp, forceV2: useV2);
 
                 // Temp names are unique per send so parallel sends of the same package
                 // to several phones never overwrite each other's device-bound key.
                 var tmpTag = Guid.NewGuid().ToString("N");
                 var keyFilePath = Path.Combine(Path.GetTempPath(), $"{video.VideoId}.{tmpTag}.shammkey");
                 var metaFilePath = Path.Combine(Path.GetTempPath(), $"{video.VideoId}.{tmpTag}.shammmeta");
-                File.WriteAllBytes(keyFilePath, wrappedForPhone);
+                File.WriteAllBytes(keyFilePath, keyBytes);
                 File.WriteAllText(metaFilePath, System.Text.Json.JsonSerializer.Serialize(video));
                 try
                 {
@@ -95,7 +92,8 @@ public class TransferService
                     VideoId = video.VideoId,
                     VideoTitle = video.Title,
                     DeviceSerial = ledgerSerial,
-                    DeviceModel = pass == null ? ledgerModel : $"{ledgerModel} · pass #{pass.Id}",
+                    DeviceModel = pass != null ? $"{ledgerModel} · pass #{pass.Id}"
+                        : (memberList.Count > 1 ? $"{ledgerModel} · family×{memberList.Count}" : ledgerModel),
                     TokenPrice = pass == null ? video.TokenPrice : 0,
                     SentAtUtc = DateTime.UtcNow,
                     UserId = Session.UserId,
@@ -104,10 +102,6 @@ public class TransferService
                     Kind = pass == null ? "protected" : "pass-use",
                     Category = "protected",
                 });
-            }
-            finally
-            {
-                NativeCrypto.shamm_wipe(deviceKey, NativeCrypto.KeyLen);
             }
         }
         finally

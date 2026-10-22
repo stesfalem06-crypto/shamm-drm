@@ -281,7 +281,9 @@ public sealed class Passes
         try
         {
             File.WriteAllText(tmp, PassFileJson(p, deviceId, shopName), new UTF8Encoding(false));
-            return mtp.WritePassFile(mtpId, tmp) > 0;
+            var ok = mtp.WritePassFile(mtpId, tmp) > 0;
+            try { FamilyGroups.Instance?.WriteToPhone(mtp, mtpId, deviceId, shopName); } catch { }
+            return ok;
         }
         catch (Exception ex) { AdbService.Log("pass file write failed: " + ex.Message); return false; }
         finally { try { File.Delete(tmp); } catch { } }

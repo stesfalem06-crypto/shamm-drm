@@ -297,27 +297,38 @@ public sealed class MtpService : IDisposable
             throw last ?? new IOException("No writable incoming folder on phone.");
         });
 
-    /// <summary>Read Xama's device-id file. Null when Xama hasn't written it yet.</summary>
     public static readonly string[] PassFileTargets =
     [
         $@"Android\media\{XamaPackage}|xama-pass.json",
         @"Download\Xama|.xama-pass.json",
     ];
 
+    public static readonly string[] FamilyFileTargets =
+    [
+        $@"Android\media\{XamaPackage}|xama-family.json",
+        @"Download\Xama|.xama-family.json",
+    ];
+
     /// <summary>Write the (display-only) weekly pass file to every target folder. Returns how many succeeded.</summary>
-    public int WritePassFile(string id, string localPath) =>
+    public int WritePassFile(string id, string localPath) => WriteSidecar(id, localPath, PassFileTargets, "pass");
+
+    /// <summary>Write signed family group file (docs/FAMILY_GROUP.md).</summary>
+    public int WriteFamilyFile(string id, string localPath) => WriteSidecar(id, localPath, FamilyFileTargets, "family");
+
+    private int WriteSidecar(string id, string localPath, string[] targets, string label) =>
         WithDevice(id, (dev, root) =>
         {
             var ok = 0;
-            foreach (var t in PassFileTargets)
+            foreach (var t in targets)
             {
                 var parts = t.Split('|');
                 try { Upload(dev, localPath, Join(root, parts[0]), parts[1], null); ok++; }
-                catch (Exception ex) { AdbService.Log($"pass file {t} failed: {ex.Message}"); }
+                catch (Exception ex) { AdbService.Log($"{label} file {t} failed: {ex.Message}"); }
             }
             return ok;
         });
 
+    /// <summary>Read Xama's device-id file. Null when Xama hasn't written it yet.</summary>
     public XamaDeviceFile? ReadDeviceFile(string id) =>
         WithDevice(id, (dev, root) =>
         {
