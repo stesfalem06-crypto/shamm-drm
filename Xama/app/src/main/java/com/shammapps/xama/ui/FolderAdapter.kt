@@ -19,8 +19,7 @@ class FolderAdapter(
         val name: TextView = v.findViewById(R.id.folderName)
         val count: TextView = v.findViewById(R.id.folderCount)
         val thumb: ImageView = v.findViewById(R.id.folderThumb)
-        val thumb2: ImageView = v.findViewById(R.id.folderThumb2)
-        val emoji: TextView = v.findViewById(R.id.folderEmoji)
+        val icon: ImageView = v.findViewById(R.id.folderIcon)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
@@ -31,20 +30,22 @@ class FolderAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val folder = folders[position]
         holder.name.text = folder.name
-        holder.count.text = if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos"
-        holder.emoji.visibility = View.VISIBLE
-        val samples = folder.videos.filter { !it.isEncrypted }.take(2)
-        if (samples.isNotEmpty()) {
-            ThumbLoader.load(holder.itemView.context, samples[0], holder.thumb, folder.name + "-0")
-            holder.emoji.visibility = View.GONE
-            if (samples.size > 1) {
-                ThumbLoader.load(holder.itemView.context, samples[1], holder.thumb2, folder.name + "-1")
-            }
+        val totalMs = folder.videos.sumOf { it.durationMs }
+        holder.count.text = buildString {
+            append(if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos")
+            if (totalMs > 0) append(" · ").append(Ui.formatDuration(totalMs))
+        }
+        val isProtected = folder.videos.isNotEmpty() && folder.videos.all { it.isEncrypted }
+        holder.icon.setImageResource(if (isProtected) R.drawable.ic_shield else R.drawable.ic_folder)
+        val sample = folder.videos.firstOrNull { !it.isEncrypted }
+        if (sample != null) {
+            holder.icon.visibility = View.GONE
+            ThumbLoader.load(holder.itemView.context, sample, holder.thumb, "folder-" + folder.name)
         } else {
+            holder.icon.visibility = View.VISIBLE
+            holder.thumb.tag = null
             holder.thumb.setImageDrawable(null)
-            holder.thumb.setBackgroundResource(R.drawable.thumb_placeholder)
-            holder.thumb2.setImageDrawable(null)
-            holder.thumb2.setBackgroundResource(R.drawable.thumb_placeholder)
+            holder.thumb.setBackgroundResource(if (isProtected) R.drawable.thumb_protected else R.drawable.thumb_placeholder)
         }
         holder.itemView.setOnClickListener { onClick(folder) }
     }

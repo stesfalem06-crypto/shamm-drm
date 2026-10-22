@@ -2,6 +2,11 @@ package com.shammapps.xama.data
 
 import android.media.MediaMetadataRetriever
 
+/**
+ * One playable item in the library. Historically video-only (hence the name);
+ * [isAudio] marks plain audio tracks (music / recordings). Protected items are
+ * always video.
+ */
 data class LocalVideo(
     val id: String,
     val title: String,
@@ -13,6 +18,20 @@ data class LocalVideo(
     val durationMs: Long = 0L,
     /** Parent folder / MediaStore bucket for organization. */
     val folderName: String = "Other",
+    val isAudio: Boolean = false,
+    val artist: String = "",
+    val album: String = "",
+    val sizeBytes: Long = 0L,
+    /** File name with extension (used for de-duplication). */
+    val displayName: String = "",
+    val dateAddedSec: Long = 0L,
+    /** Video frame size from MediaStore (0 when unknown). */
+    val width: Int = 0,
+    val height: Int = 0,
+    /** Protected items: unencrypted poster JPEG shipped by X Seller (if any). */
+    val posterPath: String? = null,
+    /** Protected PDF document (opened in the in-app viewer, never in the video player). */
+    val isPdf: Boolean = false,
 )
 
 data class VideoFolder(

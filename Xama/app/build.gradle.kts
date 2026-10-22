@@ -11,8 +11,8 @@ android {
         applicationId = "com.shammapps.xama"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 11
+        versionName = "0.5.4"
     }
 
     buildTypes {
@@ -22,6 +22,11 @@ android {
             // request) - see proguard-rules.pro for the DRM-specific rules.
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+    }
+
+    buildFeatures {
+        // Used by the About screen to show the version name.
+        buildConfig = true
     }
 
     compileOptions {
@@ -55,9 +60,13 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
     implementation("androidx.media3:media3-common:1.4.1")
+    // Background audio playback + media notification (MediaSessionService).
+    implementation("androidx.media3:media3-session:1.4.1")
 
     // Root/tamper detection library (maintained, widely used, permissive license)
     implementation("com.scottyab:rootbeer-lib:0.1.0")
 
     implementation("com.google.code.gson:gson:2.11.0")
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0") { isTransitive = false }
 }

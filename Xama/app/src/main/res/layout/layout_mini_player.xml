@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/nav_float"
+    android:elevation="8dp">
+
+    <LinearLayout
+        android:id="@+id/miniBody"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="8dp"
+        android:paddingEnd="6dp"
+        android:background="@drawable/row_ripple">
+
+        <androidx.cardview.widget.CardView
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp"
+            app:cardBackgroundColor="@color/bg_elevated">
+            <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent"
+                android:background="@drawable/art_placeholder">
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center"
+                    android:src="@drawable/ic_music" android:importantForAccessibility="no"/>
+                <ImageView android:id="@+id/miniArt" android:layout_width="match_parent" android:layout_height="match_parent"
+                    android:scaleType="centerCrop" android:importantForAccessibility="no"/>
+            </FrameLayout>
+        </androidx.cardview.widget.CardView>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+            <TextView android:id="@+id/miniTitle" style="@style/Text.Body" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:textSize="14sp" android:fontFamily="sans-serif-medium"
+                android:maxLines="1" android:ellipsize="end"/>
+            <TextView android:id="@+id/miniArtist" style="@style/Text.Caption" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:maxLines="1" android:ellipsize="end"/>
+        </LinearLayout>
+
+        <ImageButton android:id="@+id/miniPlayPause" android:layout_width="44dp" android:layout_height="44dp"
+            android:padding="10dp" android:scaleType="fitCenter" android:background="@drawable/player_btn_ripple"
+            android:src="@drawable/ic_play" app:tint="@color/text_primary" android:contentDescription="Play or pause"/>
+        <ImageButton android:id="@+id/miniNext" android:layout_width="44dp" android:layout_height="44dp"
+            android:padding="11dp" android:scaleType="fitCenter" android:background="@drawable/player_btn_ripple"
+            android:src="@drawable/ic_skip_next" app:tint="@color/text_primary" android:contentDescription="Next track"/>
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/miniProgress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:layout_marginStart="18dp"
+        android:layout_marginEnd="18dp"
+        android:layout_marginBottom="4dp"
+        android:max="1000"
+        android:progressDrawable="@drawable/progress_track"/>
+</LinearLayout>

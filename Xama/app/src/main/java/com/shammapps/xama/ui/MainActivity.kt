@@ -1,37 +1,59 @@
 package com.shammapps.xama.ui
 
 import android.Manifest
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.media.MediaMetadataRetriever
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
+import android.view.animation.AnimationUtils
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.ImageView
-import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.widget.NestedScrollView
+import androidx.media3.common.C
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.common.util.concurrent.ListenableFuture
+import com.shammapps.xama.BuildConfig
 import com.shammapps.xama.R
+import com.shammapps.xama.data.LibraryCache
 import com.shammapps.xama.data.LocalVideo
 import com.shammapps.xama.data.VideoFolder
 import com.shammapps.xama.data.VideoRepository
 import com.shammapps.xama.data.WatchHistory
-import com.shammapps.xama.util.ThumbLoader
+import com.shammapps.xama.player.PlaybackService
 import java.util.concurrent.Executors
 
+/**
+ * Library home in the classic local-player style shop customers already know:
+ * folder list -> video list (thumbnail, duration, size, resolution, NEW badge),
+ * list/grid toggle, sort and search in the toolbar, docked bottom navigation
+ * (Videos / Music / Protected / Me).
+ */
+@OptIn(UnstableApi::class)
 class MainActivity : AppCompatActivity() {
 
     companion object {
@@ -42,52 +64,124 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_IS_ENCRYPTED = "is_encrypted"
         const val EXTRA_IV_BASE64 = "iv_base64"
         const val EXTRA_START_INDEX = "start_index"
+
+        private const val STATE_TAB = "tab"
+        private const val STATE_FOLDER = "folder"
+        private const val STATE_QUERY = "query"
+        private const val PREFS = "xama_ui"
     }
 
-    private enum class Tab { HOME, FOLDERS, PROTECTED, PROFILE }
-    private enum class Category { ALL, RECENT, REELS, LONG, PROTECTED }
+    private enum class Tab { VIDEOS, REELS, MUSIC, PROTECTED, PROFILE }
+    private enum class Sort(val label: String) { NAME("Name"), DATE("Date"), SIZE("Size"), LENGTH("Length") }
 
     private lateinit var repository: VideoRepository
-    private var allVideos: List<LocalVideo> = emptyList()
+    private var allItems: List<LocalVideo> = emptyList()
+    private var videos: List<LocalVideo> = emptyList()
+    private var audio: List<LocalVideo> = emptyList()
+    /** Protected PDFs (shown only in the Protected tab). */
+    private var docs: List<LocalVideo> = emptyList()
     private var folders: List<VideoFolder> = emptyList()
-    private var tab = Tab.HOME
-    private var category = Category.ALL
+    private var tab = Tab.VIDEOS
     private var query = ""
+    private var searchOpen = false
     private var openFolder: VideoFolder? = null
-    private var featured: LocalVideo? = null
+    /** Drilled-in music folder (Music > Folders). */
+    private var openMusicFolder: VideoFolder? = null
+    private var musicFolders: List<VideoFolder> = emptyList()
+    /** Per-screen List / Thumbnails choice for video lists. */
+    private fun videoScreenKey(): String = when {
+        tab == Tab.PROTECTED -> "protected"
+        tab == Tab.REELS -> if (openReelsFolder != null) "reels_folder" else "reels"
+        openFolder != null -> "folder"
+        special[Tab.VIDEOS] != null -> "videos_special"
+        query.isEmpty() && !videosByFolder -> "videos_all"
+        else -> "search"
+    }
+    private fun cardsFor(key: String = videoScreenKey()) = prefs.getBoolean("cards_$key", false)
+    private fun isVideoListScreen(): Boolean =
+        tab == Tab.PROTECTED || (tab == Tab.REELS && (!reelsByFolder || openReelsFolder != null || special[Tab.REELS] != null)) ||
+            (tab == Tab.VIDEOS && (openFolder != null || query.isNotEmpty() || !videosByFolder || special[Tab.VIDEOS] != null))
+    private var reelsByFolder = false
+    /** Drilled-in Reels folder (Reels > Folders > folder). */
+    private var openReelsFolder: VideoFolder? = null
+    private var musicByFolder = false
+    private var videosByFolder = true
+    /** Liked / Favorites category per tab (null = All/Folders). */
+    private val special = HashMap<Tab, String>()
+    private var pendingFolderName: String? = null
+    private var gridMode = false
+    private var sort = Sort.DATE
+    private var sortDescending = true
     private var loading = false
+    private var hasLoadedOnce = false
+    private var scanStarted = false
+    private var signature = ""
     private val loadExecutor = Executors.newSingleThreadExecutor()
+    private val handler = Handler(Looper.getMainLooper())
+
+    // Mini player
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var controller: MediaController? = null
+    private var miniArtKey: String? = null
+    private val miniTicker = object : Runnable {
+        override fun run() {
+            updateMiniProgress()
+            handler.postDelayed(this, 1000)
+        }
+    }
+    private val miniListener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) = bindMiniPlayer()
+    }
 
     private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (!granted) {
-            Toast.makeText(this, "Allow video access to browse folders on this phone.", Toast.LENGTH_LONG).show()
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        if (result.values.none { it }) {
+            Toast.makeText(this, "Allow media access to browse videos and music on this phone.", Toast.LENGTH_LONG).show()
         }
-        reloadAsync()
+        reloadAsync(force = true)
     }
+
+    private val prefs by lazy { getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+
+    // ---------------------------------------------------------------- lifecycle
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        Glass.applyWindow(this)
         repository = VideoRepository(this)
+        gridMode = prefs.getBoolean("grid_mode", false)
+        sort = Sort.values().getOrElse(prefs.getInt("sort", Sort.DATE.ordinal)) { Sort.DATE }
+        sortDescending = prefs.getBoolean("sort_desc", true)
+        reelsByFolder = prefs.getBoolean("reels_by_folder", false)
+        musicByFolder = prefs.getBoolean("music_by_folder", false)
+        videosByFolder = prefs.getBoolean("videos_by_folder", true)
 
-        // Back: folder detail → folders list; otherwise leave app only from root
+        savedInstanceState?.let { s ->
+            tab = Tab.values().getOrElse(s.getInt(STATE_TAB, 0)) { Tab.VIDEOS }
+            pendingFolderName = s.getString(STATE_FOLDER)
+            query = s.getString(STATE_QUERY).orEmpty()
+            searchOpen = query.isNotEmpty()
+        }
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
+                    searchOpen -> closeSearch()
+                    openReelsFolder != null -> {
+                        openReelsFolder = null
+                        render(animate = true)
+                    }
+                    openMusicFolder != null -> {
+                        openMusicFolder = null
+        openReelsFolder = null
+                        render(animate = true)
+                    }
                     openFolder != null -> {
                         openFolder = null
-                        tab = Tab.FOLDERS
-                        updateNav()
-                        render()
+                        render(animate = true)
                     }
-                    tab != Tab.HOME -> {
-                        tab = Tab.HOME
-                        updateNav()
-                        render()
-                    }
+                    tab != Tab.VIDEOS -> switchTab(Tab.VIDEOS)
                     else -> {
                         isEnabled = false
                         onBackPressedDispatcher.onBackPressed()
@@ -96,7 +190,9 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        findViewById<EditText>(R.id.searchInput).addTextChangedListener(object : TextWatcher {
+        val search = findViewById<EditText>(R.id.searchInput)
+        if (query.isNotEmpty()) search.setText(query)
+        search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 query = s?.toString()?.trim().orEmpty()
@@ -105,341 +201,967 @@ class MainActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) {}
         })
 
-        findViewById<LinearLayout>(R.id.navHome).setOnClickListener { switchTab(Tab.HOME) }
-        findViewById<LinearLayout>(R.id.navFolders).setOnClickListener { switchTab(Tab.FOLDERS) }
-        findViewById<LinearLayout>(R.id.navProtected).setOnClickListener { switchTab(Tab.PROTECTED) }
-        findViewById<LinearLayout>(R.id.navProfile).setOnClickListener { switchTab(Tab.PROFILE) }
-        findViewById<TextView>(R.id.btnBackFolder).setOnClickListener {
-            openFolder = null
+        findViewById<View>(R.id.btnSearch).setOnClickListener { if (searchOpen) closeSearch() else openSearch() }
+        findViewById<View>(R.id.btnViewMode).setOnClickListener { toggleViewMode() }
+        findViewById<View>(R.id.btnSort).setOnClickListener { showSortSheet() }
+        findViewById<View>(R.id.btnMore).setOnClickListener { showMoreSheet() }
+        findViewById<View>(R.id.btnBackFolder).setOnClickListener { onBackPressedDispatcher.onBackPressed() }
+
+        findViewById<View>(R.id.navVideos).setOnClickListener { switchTab(Tab.VIDEOS) }
+        findViewById<View>(R.id.navReels).setOnClickListener { switchTab(Tab.REELS) }
+        findViewById<View>(R.id.modeAll).setOnClickListener { setByFolder(false) }
+        findViewById<View>(R.id.modeFolders).setOnClickListener { setByFolder(true) }
+        findViewById<View>(R.id.modeLiked).setOnClickListener { setSpecial(com.shammapps.xama.data.Favorites.LIKED) }
+        findViewById<View>(R.id.modeFav).setOnClickListener { setSpecial(com.shammapps.xama.data.Favorites.FAV) }
+        findViewById<View>(R.id.modePlay).setOnClickListener {
+            val sp = special[Tab.REELS]
+            openReels(if (sp != null) specialItems(Tab.REELS, sp) else reelsFeed(videos), null)
+        }
+        findViewById<View>(R.id.rowScanAll).setOnClickListener { toggleScanAll() }
+        findViewById<View>(R.id.rowBgContinue).setOnClickListener {
+            val on = !com.shammapps.xama.player.BackgroundPlay.continueOnLeave(this)
+            com.shammapps.xama.player.BackgroundPlay.setContinueOnLeave(this, on)
+            bindBgSetting()
+        }
+        findViewById<View>(R.id.navMusic).setOnClickListener { switchTab(Tab.MUSIC) }
+        findViewById<View>(R.id.navProtected).setOnClickListener { switchTab(Tab.PROTECTED) }
+        findViewById<View>(R.id.navProfile).setOnClickListener { switchTab(Tab.PROFILE) }
+
+        findViewById<View>(R.id.rowAbout).setOnClickListener { openAbout() }
+        findViewById<View>(R.id.rowUsbSetup).setOnClickListener { openUsbSetup() }
+        findViewById<View>(R.id.rowShareReceive).setOnClickListener { com.shammapps.xama.share.ShareActivity.receive(this) }
+        findViewById<View>(R.id.rowSharePartners).setOnClickListener { com.shammapps.xama.share.ShareActivity.partners(this) }
+        findViewById<View>(R.id.rowRescan).setOnClickListener { rescan() }
+        findViewById<View>(R.id.rowClearHistory).setOnClickListener {
+            WatchHistory.clear(this)
+            Toast.makeText(this, "Watch history cleared", Toast.LENGTH_SHORT).show()
             render()
         }
+        findViewById<TextView>(R.id.profileVersion).text = "v${BuildConfig.VERSION_NAME}"
 
-        bindCategory(R.id.catAll, Category.ALL)
-        bindCategory(R.id.catRecent, Category.RECENT)
-        bindCategory(R.id.catReels, Category.REELS)
-        bindCategory(R.id.catLong, Category.LONG)
-        bindCategory(R.id.catProtected, Category.PROTECTED)
+        findViewById<View>(R.id.miniBody).setOnClickListener {
+            startActivity(Intent(this, AudioPlayerActivity::class.java))
+        }
+        findViewById<View>(R.id.miniPlayPause).setOnClickListener {
+            controller?.let { if (it.playWhenReady) it.pause() else { if (it.playbackState == Player.STATE_IDLE) it.prepare(); it.play() } }
+        }
+        findViewById<View>(R.id.miniNext).setOnClickListener { controller?.seekToNext() }
 
-        ensurePermission()
+        updateNav()
+        updateToolbar()
+
+        if (LibraryCache.items.isNotEmpty()) applyLibrary(LibraryCache.items)
+
+        // Rewrite every identity-file copy on each launch (+ media scan) so X Seller sees it over MTP.
+        if (savedInstanceState == null) {
+            val app = applicationContext
+            loadExecutor.execute {
+                try { com.shammapps.xama.storage.XamaStorage.writeDeviceIdentity(app, force = true) } catch (_: Exception) {}
+            }
+        }
+
+        // First run: show the USB / shop-PC setup guide before asking for media access.
+        if (savedInstanceState == null && !OnboardingActivity.isDone(this)) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+        } else {
+            startScan()
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(STATE_TAB, tab.ordinal)
+        outState.putString(STATE_FOLDER, openFolder?.name)
+        outState.putString(STATE_QUERY, query)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        connectMiniPlayer()
     }
 
     override fun onResume() {
         super.onResume()
-        // Only refresh continue row / light update — full rescan is expensive
-        if (::repository.isInitialized && allVideos.isNotEmpty()) {
-            render()
+        bindPass()
+        startPassWatch()
+        if (!scanStarted) {
+            if (OnboardingActivity.isDone(this)) startScan()
+            return
+        }
+        if (tab == Tab.PROFILE) bindScanAll()
+        if (hasLoadedOnce && System.currentTimeMillis() - LibraryCache.lastScanMs > 1500) {
+            reloadAsync(force = false)
+        } else if (hasLoadedOnce) {
+            refreshLight()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        releaseMiniPlayer()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        handler.removeCallbacksAndMessages(null)
+        loadExecutor.shutdown()
+    }
+
+    // ---------------------------------------------------------------- loading
+
+    private fun startScan() {
+        if (scanStarted) return
+        scanStarted = true
+        ensurePermission()
+    }
+
+    private fun mediaPermissions(): Array<String> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO)
+        } else {
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+
+    private fun missingPermissions(): List<String> = mediaPermissions().filter {
+        ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun ensurePermission() {
+        val missing = missingPermissions()
+        reloadAsync(force = true)
+        if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
+    }
+
+    private var reloadQueued = false
+
+    private fun rescan() {
+        Toast.makeText(this, "Rescanning…", Toast.LENGTH_SHORT).show()
+        reloadAsync(force = true)
+    }
+
+    private fun reloadAsync(force: Boolean) {
+        if (loading) {
+            if (force) reloadQueued = true
+            return
+        }
+        loading = true
+        if (allItems.isEmpty()) render()
+        loadExecutor.execute {
+            try { com.shammapps.xama.storage.XamaStorage.writeDeviceIdentity(applicationContext) } catch (_: Exception) {}
+            val items = try { repository.loadAll() } catch (_: Exception) { emptyList() }
+            runOnUiThread {
+                loading = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                val newSig = items.joinToString("|") { it.id + ":" + it.title }
+                val changed = newSig != signature || !hasLoadedOnce || force
+                hasLoadedOnce = true
+                LibraryCache.update(items)
+                if (changed) applyLibrary(items) else refreshLight()
+                if (reloadQueued) {
+                    reloadQueued = false
+                    reloadAsync(force = true)
+                }
+            }
+        }
+    }
+
+    private fun applyLibrary(items: List<LocalVideo>) {
+        allItems = items
+        signature = items.joinToString("|") { it.id + ":" + it.title }
+        videos = items.filter { !it.isAudio && !it.isPdf }
+        docs = items.filter { it.isPdf }
+        audio = items.filter { it.isAudio }
+        folders = try { repository.loadFolders(videos) } catch (_: Exception) { emptyList() }
+        musicFolders = audio.groupBy { it.folderName.ifBlank { "Other" } }
+            .map { (name, list) -> VideoFolder(name, list.size, list) }
+            .sortedBy { it.name.lowercase() }
+        openMusicFolder = openMusicFolder?.let { f -> musicFolders.find { it.name == f.name } }
+        openReelsFolder = openReelsFolder?.let { f -> reelsFolders().find { it.name == f.name } }
+        openFolder = openFolder?.let { f -> folders.find { it.name == f.name } }
+        pendingFolderName?.let { name ->
+            openFolder = folders.find { it.name == name }
+            pendingFolderName = null
+        }
+        render()
+    }
+
+    /** Refresh progress bars / NEW badges without rebuilding lists (keeps scroll). */
+    private fun refreshLight() {
+        findViewById<RecyclerView>(R.id.contentList).adapter?.notifyDataSetChanged()
+    }
+
+    // ---------------------------------------------------------------- toolbar / navigation
+
+    private fun openSearch() {
+        searchOpen = true
+        updateToolbar()
+        val input = findViewById<EditText>(R.id.searchInput)
+        input.requestFocus()
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+            .showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun closeSearch() {
+        val input = findViewById<EditText>(R.id.searchInput)
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+            .hideSoftInputFromWindow(input.windowToken, 0)
+        searchOpen = false
+        input.setText("")
+        updateToolbar()
+    }
+
+    private fun updateToolbar() {
+        val inList = tab != Tab.PROFILE
+        findViewById<View>(R.id.titleBlock).visibility = if (searchOpen) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.searchInput).visibility = if (searchOpen) View.VISIBLE else View.GONE
+        findViewById<ImageButton>(R.id.btnSearch).apply {
+            visibility = if (inList) View.VISIBLE else View.GONE
+            setImageResource(if (searchOpen) R.drawable.ic_close else R.drawable.ic_search)
+        }
+        val videoScreen = tab == Tab.VIDEOS || tab == Tab.PROTECTED || tab == Tab.REELS
+        findViewById<ImageButton>(R.id.btnViewMode).apply {
+            visibility = if (videoScreen && !searchOpen) View.VISIBLE else View.GONE
+            val altOn = if (isVideoListScreen()) cardsFor() else gridMode
+            setImageResource(if (altOn) R.drawable.ic_list else R.drawable.ic_grid)
+            contentDescription = if (isVideoListScreen()) "List / Thumbnails" else "List / Grid"
+        }
+        findViewById<View>(R.id.btnSort).visibility = if (inList && !searchOpen) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.btnBackFolder).visibility =
+            if ((openFolder != null || openMusicFolder != null || openReelsFolder != null) && !searchOpen) View.VISIBLE else View.GONE
+        findViewById<EditText>(R.id.searchInput).hint = when {
+            tab == Tab.MUSIC -> "Search music"
+            openFolder != null -> "Search in ${openFolder?.name}"
+            else -> "Search videos"
         }
     }
 
     private fun switchTab(t: Tab) {
+        if (t == tab && openFolder == null && openMusicFolder == null && openReelsFolder == null) {
+            findViewById<RecyclerView>(R.id.contentList).smoothScrollToPosition(0)
+            return
+        }
+        if (searchOpen) closeSearch()
         tab = t
         openFolder = null
+        openMusicFolder = null
         updateNav()
-        render()
+        render(animate = true)
     }
 
-    private fun bindCategory(id: Int, c: Category) {
-        findViewById<TextView>(id).setOnClickListener {
-            category = c
-            styleCategories()
-            render()
-        }
-    }
-
-    private fun ensurePermission() {
-        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.READ_MEDIA_VIDEO
-        } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
-        }
-        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
-            reloadAsync()
-        } else {
-            permissionLauncher.launch(permission)
-        }
-    }
-
-    /** Heavy MediaStore work off the main thread to stop freezes. */
-    private fun reloadAsync() {
-        if (loading) return
-        loading = true
-        findViewById<TextView>(R.id.videoCountText).text = "Loading…"
-        loadExecutor.execute {
-            val videos = try {
-                repository.loadAll()
-            } catch (_: Exception) {
-                emptyList()
-            }
-            val folderList = try {
-                repository.loadFolders(videos)
-            } catch (_: Exception) {
-                emptyList()
-            }
-            val feat = pickFeatured(videos)
-            runOnUiThread {
-                loading = false
-                allVideos = videos
-                folders = folderList
-                featured = feat
-                updateNav()
-                styleCategories()
-                render()
-            }
-        }
-    }
-
-    private fun pickFeatured(videos: List<LocalVideo>): LocalVideo? {
-        if (videos.isEmpty()) return null
-        return videos.firstOrNull { it.isEncrypted }
-            ?: videos.maxByOrNull { it.durationMs }
-            ?: videos.first()
-    }
+    private fun openAbout() = startActivity(Intent(this, AboutActivity::class.java))
+    private fun openUsbSetup() = startActivity(Intent(this, OnboardingActivity::class.java))
 
     private fun updateNav() {
-        fun paint(item: Int, icon: Int, label: Int, selected: Boolean) {
-            findViewById<View>(item).setBackgroundResource(if (selected) R.drawable.nav_pill_on else R.drawable.nav_pill_off)
-            val c = if (selected) android.R.color.white else R.color.text_muted
-            findViewById<TextView>(icon).setTextColor(ContextCompat.getColor(this, c))
-            findViewById<TextView>(label).setTextColor(ContextCompat.getColor(this, c))
+        fun paint(icon: Int, label: Int, selected: Boolean) {
+            val color = ContextCompat.getColor(this, if (selected) R.color.accent else R.color.text_muted)
+            findViewById<ImageView>(icon).setColorFilter(color)
+            findViewById<TextView>(label).setTextColor(color)
         }
-        paint(R.id.navHome, R.id.navHomeIcon, R.id.navHomeLabel, tab == Tab.HOME)
-        paint(R.id.navFolders, R.id.navFoldersIcon, R.id.navFoldersLabel, tab == Tab.FOLDERS)
-        paint(R.id.navProtected, R.id.navProtectedIcon, R.id.navProtectedLabel, tab == Tab.PROTECTED)
-        paint(R.id.navProfile, R.id.navProfileIcon, R.id.navProfileLabel, tab == Tab.PROFILE)
+        paint(R.id.navReelsIcon, R.id.navReelsLabel, tab == Tab.REELS)
+        paint(R.id.navVideosIcon, R.id.navVideosLabel, tab == Tab.VIDEOS)
+        paint(R.id.navMusicIcon, R.id.navMusicLabel, tab == Tab.MUSIC)
+        paint(R.id.navProtectedIcon, R.id.navProtectedLabel, tab == Tab.PROTECTED)
+        paint(R.id.navProfileIcon, R.id.navProfileLabel, tab == Tab.PROFILE)
     }
 
-    private fun styleCategories() {
-        fun style(id: Int, selected: Boolean) {
-            val v = findViewById<TextView>(id)
-            v.setBackgroundResource(if (selected) R.drawable.chip_selected else R.drawable.chip_unselected)
-            v.setTextColor(if (selected) 0xFFFFFFFF.toInt() else ContextCompat.getColor(this, R.color.text_muted))
+    /** Folder lists: List / Grid. Video lists: List / Thumbnails (remembered per screen). */
+    private fun toggleViewMode() {
+        if (isVideoListScreen()) {
+            val key = videoScreenKey()
+            val cards = !cardsFor(key)
+            prefs.edit().putBoolean("cards_$key", cards).apply()
+            Toast.makeText(this, if (cards) "Thumbnails" else "List", Toast.LENGTH_SHORT).show()
+        } else {
+            gridMode = !gridMode
+            prefs.edit().putBoolean("grid_mode", gridMode).apply()
         }
-        style(R.id.catAll, category == Category.ALL)
-        style(R.id.catRecent, category == Category.RECENT)
-        style(R.id.catReels, category == Category.REELS)
-        style(R.id.catLong, category == Category.LONG)
-        style(R.id.catProtected, category == Category.PROTECTED)
+        render(animate = true)
     }
 
-    private fun render() {
-        val list = findViewById<RecyclerView>(R.id.contentList)
-        val homeScroll = findViewById<NestedScrollView>(R.id.homeScroll)
-        val profile = findViewById<View>(R.id.profilePanel)
-        val empty = findViewById<View>(R.id.emptyState)
-        val backBar = findViewById<View>(R.id.folderBackBar)
-        val categoryScroll = findViewById<View>(R.id.categoryScroll)
-        val searchBar = findViewById<View>(R.id.searchBar)
-        val header = findViewById<TextView>(R.id.headerTitle)
-        val countText = findViewById<TextView>(R.id.videoCountText)
-
-        val protectedCount = allVideos.count { it.isEncrypted }
-        if (!loading) {
-            countText.text = when {
-                allVideos.isEmpty() -> ""
-                protectedCount > 0 -> "${allVideos.size} · $protectedCount protected"
-                else -> "${allVideos.size} videos"
+    private fun showSortSheet() {
+        val sheet = OptionSheet(this, "Sort by", if (sortDescending) "Descending" else "Ascending")
+        Sort.values().forEach { s ->
+            sheet.add(s.label, R.drawable.ic_sort, checked = s == sort) {
+                if (sort == s) sortDescending = !sortDescending else {
+                    sort = s
+                    sortDescending = s != Sort.NAME
+                }
+                prefs.edit().putInt("sort", sort.ordinal).putBoolean("sort_desc", sortDescending).apply()
+                render(animate = true)
             }
         }
+        sheet.add(if (sortDescending) "Switch to ascending" else "Switch to descending", R.drawable.ic_refresh) {
+            sortDescending = !sortDescending
+            prefs.edit().putBoolean("sort_desc", sortDescending).apply()
+            render(animate = true)
+        }
+        sheet.show()
+    }
 
-        homeScroll.visibility = View.GONE
+    private fun showMoreSheet() {
+        OptionSheet(this, "Xama")
+            .add("Refresh", R.drawable.ic_refresh) { rescan() }
+            .add(
+                if (isVideoListScreen()) (if (cardsFor()) "List view" else "Thumbnails view")
+                else (if (gridMode) "List view" else "Grid view"),
+                R.drawable.ic_grid
+            ) { toggleViewMode() }
+            .add("Connect to shop PC (USB setup)", R.drawable.ic_usb) { openUsbSetup() }
+            .add("About", R.drawable.ic_info) { openAbout() }
+            .show()
+    }
+
+    // ---------------------------------------------------------------- rendering
+
+    /** Thumbnail cards: one column on phones, more on tablets / landscape. */
+    private fun cardSpan(): Int = (resources.configuration.screenWidthDp / 360).coerceIn(1, 4)
+
+    private fun gridSpan(): Int {
+        val w = resources.configuration.screenWidthDp
+        return (w / 170).coerceIn(2, 6)
+    }
+
+    private fun sortVideos(list: List<LocalVideo>): List<LocalVideo> {
+        val sorted = when (sort) {
+            Sort.NAME -> list.sortedBy { it.title.lowercase() }
+            Sort.DATE -> list.sortedBy { it.dateAddedSec }
+            Sort.SIZE -> list.sortedBy { it.sizeBytes }
+            Sort.LENGTH -> list.sortedBy { it.durationMs }
+        }
+        return if (sortDescending) sorted.reversed() else sorted
+    }
+
+    private fun sortFolders(list: List<VideoFolder>): List<VideoFolder> {
+        val sorted = when (sort) {
+            Sort.NAME -> list.sortedBy { it.name.lowercase() }
+            Sort.DATE -> list.sortedBy { f -> f.videos.maxOfOrNull { it.dateAddedSec } ?: 0L }
+            Sort.SIZE -> list.sortedBy { f -> f.videos.sumOf { it.sizeBytes } }
+            Sort.LENGTH -> list.sortedBy { it.videoCount }
+        }
+        return if (sortDescending) sorted.reversed() else sorted
+    }
+
+    private fun matches(v: LocalVideo): Boolean =
+        query.isEmpty() || v.title.contains(query, true) || v.folderName.contains(query, true) ||
+            v.artist.contains(query, true) || v.album.contains(query, true)
+
+    private fun watchedIds(): Set<String> = WatchHistory.recentIds(this).toHashSet()
+
+    // ---- live weekly-pass refresh (display only) ----
+    private val myDeviceId: String? by lazy { runCatching { com.shammapps.xama.storage.XamaStorage.deviceIdHex(this) }.getOrNull() }
+    private var passStamp: String? = null
+    private val passHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val passObservers = mutableListOf<android.os.FileObserver>()
+    private var passContentObserver: android.database.ContentObserver? = null
+    private var passReceiver: android.content.BroadcastReceiver? = null
+    private var passWatching = false
+
+    private fun passMaybeRefresh(force: Boolean = false) {
+        if (!passWatching && !force) return
+        val st = com.shammapps.xama.pass.WeeklyPass.stamp(this)
+        if (force || st != passStamp) bindPass()
+    }
+    private val passDebounced = Runnable { passMaybeRefresh(force = true) }
+    private fun passPoke(delayMs: Long = 400) { passHandler.removeCallbacks(passDebounced); passHandler.postDelayed(passDebounced, delayMs) }
+
+    private fun isPlugged(): Boolean {
+        val i = registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+        return (i?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+    }
+    private val passPoll = object : Runnable {
+        override fun run() {
+            if (!passWatching) return
+            passMaybeRefresh()
+            passHandler.postDelayed(this, if (isPlugged()) 3000L else 15000L)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun startPassWatch() {
+        if (passWatching) return
+        passWatching = true
+        val mask = android.os.FileObserver.CLOSE_WRITE or android.os.FileObserver.MOVED_TO or
+            android.os.FileObserver.CREATE or android.os.FileObserver.DELETE or android.os.FileObserver.MODIFY
+        for (dir in com.shammapps.xama.pass.WeeklyPass.watchDirs(this)) {
+            runCatching {
+                val obs = object : android.os.FileObserver(dir.absolutePath, mask) {
+                    override fun onEvent(event: Int, path: String?) {
+                        if (path == null || path.contains("pass", true)) passHandler.post { passPoke() }
+                    }
+                }
+                obs.startWatching(); passObservers += obs
+            }
+        }
+        runCatching {
+            val co = object : android.database.ContentObserver(passHandler) {
+                override fun onChange(selfChange: Boolean) { passPoke(800) }
+            }
+            contentResolver.registerContentObserver(android.provider.MediaStore.Files.getContentUri("external"), true, co)
+            passContentObserver = co
+        }
+        val rx = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
+                passPoke(); passHandler.postDelayed({ passMaybeRefresh(force = true) }, 2500)
+                passHandler.removeCallbacks(passPoll); passHandler.postDelayed(passPoll, 3000)
+            }
+        }
+        val f = android.content.IntentFilter().apply {
+            addAction(android.content.Intent.ACTION_POWER_CONNECTED)
+            addAction(android.content.Intent.ACTION_POWER_DISCONNECTED)
+            addAction("android.hardware.usb.action.USB_STATE")
+            addAction(android.content.Intent.ACTION_MEDIA_SCANNER_FINISHED)
+            addAction(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
+        }
+        runCatching { ContextCompat.registerReceiver(this, rx, f, ContextCompat.RECEIVER_EXPORTED); passReceiver = rx }
+        passHandler.postDelayed(passPoll, 3000)
+    }
+
+    private fun stopPassWatch() {
+        passWatching = false
+        passHandler.removeCallbacksAndMessages(null)
+        passObservers.forEach { runCatching { it.stopWatching() } }; passObservers.clear()
+        passContentObserver?.let { runCatching { contentResolver.unregisterContentObserver(it) } }; passContentObserver = null
+        passReceiver?.let { runCatching { unregisterReceiver(it) } }; passReceiver = null
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopPassWatch()
+    }
+
+    private fun bindPass() {
+        val pass = com.shammapps.xama.pass.WeeklyPass.load(this, myDeviceId)
+        passStamp = com.shammapps.xama.pass.WeeklyPass.stamp(this)
+        val st = pass?.state() ?: com.shammapps.xama.pass.WeeklyPass.State.NONE
+        val color = when (st) {
+            com.shammapps.xama.pass.WeeklyPass.State.ACTIVE -> 0xFF2E7D32.toInt()
+            com.shammapps.xama.pass.WeeklyPass.State.LAST_DAY -> 0xFFF9A825.toInt()
+            com.shammapps.xama.pass.WeeklyPass.State.EXPIRED,
+            com.shammapps.xama.pass.WeeklyPass.State.REMOVED -> 0xFFC62828.toInt()
+            com.shammapps.xama.pass.WeeklyPass.State.NONE -> 0xFF616161.toInt()
+        }
+        val df = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
+        val days = pass?.daysLeft() ?: 0
+        val title: String; val sub: String; val badge: String
+        when (st) {
+            com.shammapps.xama.pass.WeeklyPass.State.NONE -> { title = "No pass"; sub = "Get a weekly pass at your Xama shop"; badge = "No pass" }
+            com.shammapps.xama.pass.WeeklyPass.State.REMOVED -> { title = "Pass removed, ask at ${pass!!.shopName}"; sub = "This phone was removed from the weekly pass"; badge = "No pass" }
+            com.shammapps.xama.pass.WeeklyPass.State.EXPIRED -> { title = "Expired, renew at ${pass!!.shopName}"; sub = "Expired ${df.format(java.util.Date(pass.expiryMs))}"; badge = "Expired" }
+            else -> {
+                title = "Weekly pass, $days day${if (days == 1) "" else "s"} left, ${pass!!.shopName}"
+                sub = "Expires ${df.format(java.util.Date(pass.expiryMs))} \u00b7 phones ${pass.phonesUsed}/${pass.phonesMax}"
+                badge = if (st == com.shammapps.xama.pass.WeeklyPass.State.LAST_DAY) "Last day" else "${days}d"
+            }
+        }
+        for (id in intArrayOf(R.id.passCardProtected, R.id.passCardProfile)) {
+            val card = findViewById<View>(id) ?: continue
+            card.findViewById<TextView>(R.id.passTitle).text = title
+            card.findViewById<TextView>(R.id.passSub).text = sub
+            card.findViewById<View>(R.id.passDot).background.mutate().setTint(color)
+        }
+        findViewById<View>(R.id.passCardProtected)?.visibility = if (tab == Tab.PROTECTED) View.VISIBLE else View.GONE
+        findViewById<TextView>(R.id.passBadge)?.let {
+            it.text = badge
+            it.background.mutate().setTint(color)
+            it.visibility = if (searchOpen) View.GONE else View.VISIBLE
+        }
+    }
+
+    private fun render(animate: Boolean = false) {
+        val list = findViewById<RecyclerView>(R.id.contentList)
+        val profile = findViewById<View>(R.id.profilePanel)
+        val empty = findViewById<View>(R.id.emptyState)
+        val loadingView = findViewById<View>(R.id.loadingState)
+        val header = findViewById<TextView>(R.id.headerTitle)
+        val sub = findViewById<TextView>(R.id.videoCountText)
+
+        updateToolbar()
+        updateModeBar()
+        bindPass()
         list.visibility = View.GONE
         profile.visibility = View.GONE
         empty.visibility = View.GONE
-        backBar.visibility = View.GONE
-        categoryScroll.visibility = if (tab == Tab.HOME) View.VISIBLE else View.GONE
-        searchBar.visibility = if (tab == Tab.PROFILE) View.GONE else View.VISIBLE
+        loadingView.visibility = View.GONE
+        sub.visibility = View.GONE
 
-        if (openFolder != null) {
-            val folder = openFolder!!
-            header.text = folder.name
-            backBar.visibility = View.VISIBLE
-            categoryScroll.visibility = View.GONE
-            findViewById<TextView>(R.id.folderDetailTitle).text =
-                if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos"
-            list.setPadding(
-                list.paddingLeft,
-                (56 * resources.displayMetrics.density).toInt(),
-                list.paddingRight,
-                list.paddingBottom
-            )
-            var videos = folder.videos
-            if (query.isNotEmpty()) videos = videos.filter { it.title.contains(query, true) }
-            // Cap folder grid for smoothness
-            showGrid(list, empty, videos.take(200))
+        if (loading && allItems.isEmpty() && tab != Tab.PROFILE) {
+            header.text = getString(R.string.app_name)
+            loadingView.visibility = View.VISIBLE
             return
         }
 
-        list.setPadding(
-            list.paddingLeft,
-            (12 * resources.displayMetrics.density).toInt(),
-            list.paddingRight,
-            list.paddingBottom
-        )
+        val watched = watchedIds()
+        val folder = openFolder
+        if (folder != null && tab == Tab.VIDEOS) {
+            header.text = folder.name
+            sub.visibility = View.VISIBLE
+            sub.text = if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos"
+            showVideos(list, sortVideos(folder.videos.filter { matches(it) }), watched, animate)
+            return
+        }
 
-        when (tab) {
-            Tab.HOME -> {
-                header.text = "Hello"
-                homeScroll.visibility = View.VISIBLE
-                bindHero()
-                bindContinue()
-                var videos = filterByCategory(allVideos)
-                if (query.isNotEmpty()) {
-                    videos = videos.filter {
-                        it.title.contains(query, true) || it.folderName.contains(query, true)
+        val sp = special[tab]
+        if (sp != null && tab in setOf(Tab.VIDEOS, Tab.REELS, Tab.MUSIC)) {
+            header.text = if (sp == com.shammapps.xama.data.Favorites.LIKED) "Liked" else "Favorites"
+            val items = specialItems(tab, sp)
+            if (items.isEmpty()) { showEmpty(specialEmpty(sp)); return }
+            sub.visibility = View.VISIBLE
+            sub.text = "${items.size} item" + if (items.size == 1) "" else "s"
+            list.visibility = View.VISIBLE
+            when (tab) {
+                Tab.MUSIC -> {
+                    list.layoutManager = LinearLayoutManager(this)
+                    list.adapter = AudioAdapter(items, controller?.currentMediaItem?.mediaId, ::showItemSheet) { index, shuffle ->
+                        AudioPlayerActivity.start(this, items, index, shuffle)
                     }
                 }
-                val featId = featured?.id
-                val grid = (if (featId != null) videos.filter { it.id != featId } else videos).take(60)
-                findViewById<TextView>(R.id.sectionTitle).text = when (category) {
-                    Category.ALL -> "Suggested for you"
-                    Category.RECENT -> "Recently added"
-                    Category.REELS -> "Reels & vertical"
-                    Category.LONG -> "Movies & long form"
-                    Category.PROTECTED -> "Protected titles"
+                Tab.REELS -> {
+                    val cards = cardsFor("reels")
+                    list.layoutManager = if (cards) GridLayoutManager(this, cardSpan()) else LinearLayoutManager(this)
+                    list.adapter = MxVideoAdapter(items, cards, watched, ::showItemSheet) { v -> openReels(items, v) }
                 }
-                val homeGrid = findViewById<RecyclerView>(R.id.homeGrid)
-                if (grid.isEmpty() && featured == null) {
-                    homeScroll.visibility = View.GONE
-                    empty.visibility = View.VISIBLE
+                else -> showVideos(list, items, watched, false)
+            }
+            if (animate) animateList(list)
+            return
+        }
+
+        when (tab) {
+            Tab.VIDEOS -> {
+                header.text = getString(R.string.app_name)
+                if (!videosByFolder && query.isEmpty()) {
+                    showVideos(list, sortVideos(videos.filter { !it.isAudio }), watched, animate)
+                    return
+                }
+                if (query.isNotEmpty()) {
+                    // Search across all videos, like the classic players do.
+                    showVideos(list, sortVideos(videos.filter { matches(it) }).take(500), watched, animate)
+                    return
+                }
+                val folderList = sortFolders(folders)
+                if (folderList.isEmpty()) {
+                    showEmpty(emptyFor(Tab.VIDEOS))
                 } else {
-                    homeGrid.layoutManager = LinearLayoutManager(this)
-                    homeGrid.setHasFixedSize(true)
-                    homeGrid.adapter = PosterAdapter(grid) { openVideo(it) }
+                    list.visibility = View.VISIBLE
+                    list.layoutManager = if (gridMode) GridLayoutManager(this, gridSpan()) else LinearLayoutManager(this)
+                    list.adapter = MxFolderAdapter(folderList, gridMode, watched) { f ->
+                        if (searchOpen) closeSearch()
+                        openFolder = f
+                        render(animate = true)
+                    }
+                    if (animate) animateList(list)
                 }
             }
             Tab.PROTECTED -> {
                 header.text = "Protected"
-                var videos = allVideos.filter { it.isEncrypted }
-                if (query.isNotEmpty()) videos = videos.filter { it.title.contains(query, true) }
-                showGrid(list, empty, videos)
+                showVideos(list, sortVideos((videos + docs).filter { it.isEncrypted && matches(it) }), watched, animate)
             }
-            Tab.FOLDERS -> {
-                header.text = "Folders"
-                var folderList = folders
-                if (query.isNotEmpty()) {
-                    folderList = folderList.filter {
-                        it.name.contains(query, true) ||
-                            it.videos.any { v -> v.title.contains(query, true) }
+            Tab.REELS -> {
+                val rf = openReelsFolder
+                header.text = rf?.name ?: "Reels"
+                if (rf == null && reelsByFolder && query.isEmpty()) {
+                    // Only folders that contain vertical videos.
+                    val fl = sortFolders(reelsFolders())
+                    if (fl.isEmpty()) showEmpty(reelsEmpty()) else {
+                        list.visibility = View.VISIBLE
+                        list.layoutManager = if (gridMode) GridLayoutManager(this, gridSpan()) else LinearLayoutManager(this)
+                        // Tap opens the folder's vertical videos; nothing auto-plays.
+                        list.adapter = MxFolderAdapter(fl, gridMode, watched) { f ->
+                            openReelsFolder = f
+                            render(animate = true)
+                        }
+                        if (animate) animateList(list)
+                    }
+                } else {
+                    val source = rf?.videos ?: videos
+                    val feed = reelsFeed(source.filter { matches(it) })
+                    if (feed.isEmpty()) showEmpty(reelsEmpty()) else {
+                        if (rf != null) {
+                            sub.visibility = View.VISIBLE
+                            sub.text = if (feed.size == 1) "1 reel" else "${feed.size} reels"
+                        }
+                        list.visibility = View.VISIBLE
+                        val key = if (rf != null) "reels_folder" else "reels"
+                        val cards = cardsFor(key)
+                        list.layoutManager = if (cards) GridLayoutManager(this, cardSpan()) else LinearLayoutManager(this)
+                        // Feed starts at the tapped video; swiping stays within this list (folder).
+                        list.adapter = MxVideoAdapter(feed, cards, watched, ::showItemSheet) { v -> openReels(feed, v) }
+                        if (animate) animateList(list)
                     }
                 }
-                if (folderList.isEmpty()) {
-                    empty.visibility = View.VISIBLE
+            }
+            Tab.MUSIC -> {
+                val mf = openMusicFolder
+                header.text = mf?.name ?: "Music"
+                if (mf == null && musicByFolder && query.isEmpty()) {
+                    if (musicFolders.isEmpty()) showEmpty(emptyFor(Tab.MUSIC)) else {
+                        list.visibility = View.VISIBLE
+                        list.layoutManager = LinearLayoutManager(this)
+                        list.adapter = MxFolderAdapter(sortFolders(musicFolders), false, emptySet(), countLabel = "tracks") { f ->
+                            openMusicFolder = f
+                            render(animate = true)
+                        }
+                        if (animate) animateList(list)
+                    }
                 } else {
-                    list.visibility = View.VISIBLE
-                    list.layoutManager = LinearLayoutManager(this)
-                    list.setHasFixedSize(true)
-                    list.adapter = FolderAdapter(folderList) { folder ->
-                        openFolder = folder
-                        render()
+                    val source = mf?.videos ?: audio
+                    val tracks = sortVideos(source.filter { matches(it) })
+                    if (tracks.isEmpty()) {
+                        showEmpty(emptyFor(Tab.MUSIC))
+                    } else {
+                        list.visibility = View.VISIBLE
+                        list.layoutManager = LinearLayoutManager(this)
+                        list.adapter = AudioAdapter(tracks, controller?.currentMediaItem?.mediaId, ::showItemSheet) { index, shuffle ->
+                            AudioPlayerActivity.start(this, tracks, index, shuffle)
+                        }
+                        if (animate) animateList(list)
                     }
                 }
             }
             Tab.PROFILE -> {
-                header.text = "Profile"
+                header.text = "Me"
                 profile.visibility = View.VISIBLE
-                findViewById<TextView>(R.id.statTotal).text = allVideos.size.toString()
-                findViewById<TextView>(R.id.statProtected).text = protectedCount.toString()
+                findViewById<TextView>(R.id.statTotal).text = videos.size.toString()
+                findViewById<TextView>(R.id.statMusic).text = audio.size.toString()
+                findViewById<TextView>(R.id.statProtected).text = (videos.count { it.isEncrypted } + docs.size).toString()
                 findViewById<TextView>(R.id.statFolders).text = folders.size.toString()
+                bindScanAll()
+                bindBgSetting()
+                if (animate) profile.startAnimation(AnimationUtils.loadAnimation(this, R.anim.item_fade_up))
             }
         }
     }
 
-    private fun filterByCategory(videos: List<LocalVideo>): List<LocalVideo> {
-        return when (category) {
-            Category.ALL -> videos
-            Category.RECENT -> videos.take(40)
-            Category.REELS -> videos.filter { it.isVertical }
-            Category.LONG -> videos.filter { !it.isVertical && it.durationMs >= 10 * 60 * 1000 }
-            Category.PROTECTED -> videos.filter { it.isEncrypted }
-        }
-    }
-
-    private fun bindContinue() {
-        val section = findViewById<View>(R.id.continueSection)
-        val row = findViewById<RecyclerView>(R.id.continueRow)
-        val recent = WatchHistory.resolve(this, allVideos).take(12)
-        if (recent.isEmpty()) {
-            section.visibility = View.GONE
+    private fun showVideos(list: RecyclerView, items: List<LocalVideo>, watched: Set<String>, animate: Boolean) {
+        if (items.isEmpty()) {
+            showEmpty(emptyFor(tab))
             return
         }
-        section.visibility = View.VISIBLE
-        row.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-        row.adapter = ContinueAdapter(recent) { openVideo(it) }
-    }
-
-    private fun bindHero() {
-        val heroCard = findViewById<View>(R.id.heroCard)
-        val feat = featured
-        if (feat == null) {
-            heroCard.visibility = View.GONE
-            return
-        }
-        heroCard.visibility = View.VISIBLE
-        findViewById<TextView>(R.id.heroTitle).text = feat.title
-        val meta = buildString {
-            if (feat.durationMs > 0) append(formatDuration(feat.durationMs))
-            if (feat.folderName.isNotBlank()) {
-                if (isNotEmpty()) append(" · ")
-                append(feat.folderName)
-            }
-            if (feat.isEncrypted) {
-                if (isNotEmpty()) append(" · ")
-                append("Protected")
-            }
-        }
-        findViewById<TextView>(R.id.heroMeta).text = meta
-        findViewById<TextView>(R.id.heroPlay).setOnClickListener { openVideo(feat) }
-        findViewById<TextView>(R.id.heroFolder).setOnClickListener {
-            openFolder = folders.find { it.name == feat.folderName }
-                ?: VideoFolder(feat.folderName, 1, listOf(feat))
-            tab = Tab.FOLDERS
-            updateNav()
-            render()
-        }
-        heroCard.setOnClickListener { openVideo(feat) }
-
-        val image = findViewById<ImageView>(R.id.heroImage)
-        ThumbLoader.load(this, feat, image, "hero-${feat.id}")
-    }
-
-    private fun formatDuration(ms: Long): String {
-        val s = ms / 1000
-        val h = s / 3600
-        val m = (s % 3600) / 60
-        val sec = s % 60
-        return if (h > 0) String.format("%d:%02d:%02d", h, m, sec) else String.format("%d:%02d", m, sec)
-    }
-
-    private fun showGrid(list: RecyclerView, empty: View, videos: List<LocalVideo>) {
-        if (videos.isEmpty()) {
-            list.visibility = View.GONE
-            empty.visibility = View.VISIBLE
-            return
-        }
-        empty.visibility = View.GONE
         list.visibility = View.VISIBLE
-        list.layoutManager = LinearLayoutManager(this)
-        list.setHasFixedSize(true)
-        list.adapter = PosterAdapter(videos) { openVideo(it) }
+        val cards = cardsFor()
+        list.layoutManager = if (cards) GridLayoutManager(this, cardSpan()) else LinearLayoutManager(this)
+        list.adapter = MxVideoAdapter(items, cards, watched, ::showItemSheet) { openVideo(it, items) }
+        if (animate) animateList(list)
     }
 
-    private fun openVideo(video: LocalVideo) {
-        if (video.isVertical) {
-            val verticalOnly = allVideos.filter { it.isVertical }
-            val startIndex = verticalOnly.indexOfFirst { it.id == video.id }.coerceAtLeast(0)
-            startActivity(Intent(this, ReelsActivity::class.java).apply {
-                putExtra(EXTRA_START_INDEX, startIndex)
-                putStringArrayListExtra("video_ids", ArrayList(verticalOnly.map { it.id }.take(100)))
-            })
-        } else {
-            startActivity(Intent(this, PlayerActivity::class.java).apply {
-                putExtra(EXTRA_VIDEO_ID, video.id)
-                putExtra(EXTRA_TITLE, video.title)
-                putExtra(EXTRA_FILE_PATH, video.filePath)
-                putExtra(EXTRA_CONTENT_URI, video.contentUri)
-                putExtra(EXTRA_IS_ENCRYPTED, video.isEncrypted)
-                putExtra(EXTRA_IV_BASE64, video.ivBase64)
-            })
+    private fun animateList(list: RecyclerView) {
+        list.layoutAnimation = AnimationUtils.loadLayoutAnimation(this, R.anim.layout_fade_up)
+        list.scheduleLayoutAnimation()
+    }
+
+    private data class Empty(val icon: Int, val title: String, val message: String, val action: String?, val onAction: (() -> Unit)?)
+
+    private fun emptyFor(t: Tab): Empty {
+        if (query.isNotEmpty()) {
+            return Empty(R.drawable.ic_search, "No results", "Nothing matches “$query”.", "Clear search") { closeSearch() }
         }
+        val needed = when {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> Manifest.permission.READ_EXTERNAL_STORAGE
+            t == Tab.MUSIC -> Manifest.permission.READ_MEDIA_AUDIO
+            else -> Manifest.permission.READ_MEDIA_VIDEO
+        }
+        val missing = missingPermissions().filter { it == needed }
+        if (missing.isNotEmpty() && t != Tab.PROTECTED) {
+            return Empty(
+                R.drawable.ic_lock_open, "Allow access to your media",
+                "Xama needs permission to show the videos and music stored on this phone.",
+                "Allow access"
+            ) { requestOrOpenSettings(missing) }
+        }
+        return when (t) {
+            Tab.MUSIC -> Empty(R.drawable.ic_music, "No music yet",
+                "Songs on this phone (MP3, M4A, AAC, FLAC, WAV, OGG, OPUS) will appear here.", "Refresh") { reloadAsync(force = true) }
+            Tab.PROTECTED -> Empty(R.drawable.ic_shield, "No protected videos",
+                "Protected videos sent to this phone will appear here.", "Refresh") { reloadAsync(force = true) }
+            else -> Empty(R.drawable.ic_folder, "No videos yet",
+                "Folders with videos on this phone will appear here.", "Refresh") { reloadAsync(force = true) }
+        }
+    }
+
+    private fun requestOrOpenSettings(missing: List<String>) {
+        val canAsk = missing.any { shouldShowRequestPermissionRationale(it) }
+        val asked = prefs.getBoolean("asked_media", false)
+        if (canAsk || !asked) {
+            prefs.edit().putBoolean("asked_media", true).apply()
+            permissionLauncher.launch(missing.toTypedArray())
+        } else {
+            try {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+            } catch (_: Exception) {
+                permissionLauncher.launch(missing.toTypedArray())
+            }
+        }
+    }
+
+    private fun showEmpty(e: Empty) {
+        findViewById<RecyclerView>(R.id.contentList).visibility = View.GONE
+        findViewById<ImageView>(R.id.emptyIcon).setImageResource(e.icon)
+        findViewById<TextView>(R.id.emptyTitle).text = e.title
+        findViewById<TextView>(R.id.emptyMessage).text = e.message
+        val action = findViewById<TextView>(R.id.emptyAction)
+        if (e.action != null && e.onAction != null) {
+            action.visibility = View.VISIBLE
+            action.text = e.action
+            action.setOnClickListener { e.onAction.invoke() }
+        } else {
+            action.visibility = View.GONE
+        }
+        findViewById<View>(R.id.emptyState).visibility = View.VISIBLE
+    }
+
+    /** Feed order: portrait videos first, then the rest. */
+    /** Reels = vertical (portrait) videos only. */
+    private fun reelsFeed(source: List<LocalVideo>): List<LocalVideo> =
+        source.filter { !it.isAudio && !it.isPdf && it.isVertical }.take(500)
+
+    private fun reelsFolders(): List<VideoFolder> = folders.mapNotNull { f ->
+        val v = f.videos.filter { it.isVertical && !it.isAudio && !it.isPdf }
+        if (v.isEmpty()) null else VideoFolder(f.name, v.size, v)
+    }
+
+    private fun reelsEmpty() = Empty(
+        R.drawable.ic_reels, if (query.isNotEmpty()) "No results" else "No reels yet",
+        if (query.isNotEmpty()) "No vertical videos match “$query”." else "Vertical (portrait) videos on this phone will appear here.",
+        "Refresh"
+    ) { reloadAsync(force = true) }
+
+    /** TikTok-style vertical swipe feed over [feed], starting at [start]. */
+    private fun openReels(feed: List<LocalVideo>, start: LocalVideo?) {
+        if (feed.isEmpty()) {
+            Toast.makeText(this, if (loading) "Still scanning…" else "No videos found for Reels", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val startIndex = start?.let { s -> feed.indexOfFirst { it.id == s.id } }?.coerceAtLeast(0) ?: 0
+        startActivity(Intent(this, ReelsActivity::class.java).apply {
+            putExtra(EXTRA_START_INDEX, startIndex)
+            putStringArrayListExtra("video_ids", ArrayList(feed.map { it.id }))
+        })
+    }
+
+    private fun updateModeBar() {
+        val bar = findViewById<View>(R.id.modeBar)
+        val show = ((tab == Tab.REELS && openReelsFolder == null) || (tab == Tab.MUSIC && openMusicFolder == null) ||
+            (tab == Tab.VIDEOS && openFolder == null)) && !searchOpen
+        bar.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show) return
+        val sp = special[tab]
+        val byFolder = when (tab) { Tab.REELS -> reelsByFolder; Tab.VIDEOS -> videosByFolder; else -> musicByFolder }
+        fun style(id: Int, selected: Boolean) {
+            val v = findViewById<TextView>(id)
+            v.setBackgroundResource(if (selected) R.drawable.chip_selected else R.drawable.chip_unselected)
+            v.setTextColor(if (selected) 0xFFFFFFFF.toInt() else ContextCompat.getColor(this, R.color.text_secondary))
+        }
+        style(R.id.modeAll, !byFolder && sp == null)
+        style(R.id.modeFolders, byFolder && sp == null)
+        style(R.id.modeLiked, sp == com.shammapps.xama.data.Favorites.LIKED)
+        style(R.id.modeFav, sp == com.shammapps.xama.data.Favorites.FAV)
+        findViewById<View>(R.id.modePlay).visibility = if (tab == Tab.REELS && (!byFolder || sp != null)) View.VISIBLE else View.GONE
+    }
+
+    private fun setSpecial(key: String) {
+        special[tab] = key
+        openReelsFolder = null; openMusicFolder = null; openFolder = null
+        render(animate = true)
+    }
+
+    private fun specialItems(t: Tab, key: String): List<LocalVideo> = when (t) {
+        Tab.MUSIC -> com.shammapps.xama.data.Favorites.resolve(this, key, audio) { it.id }
+        Tab.REELS -> reelsFeed(com.shammapps.xama.data.Favorites.resolve(this, key, videos) { it.id })
+        else -> com.shammapps.xama.data.Favorites.resolve(this, key, videos + docs) { it.id }.filter { !it.isAudio }
+    }.filter { matches(it) }
+
+    private fun specialEmpty(key: String) = Empty(
+        if (key == com.shammapps.xama.data.Favorites.LIKED) R.drawable.ic_heart_outline else R.drawable.ic_bookmark_outline,
+        if (key == com.shammapps.xama.data.Favorites.LIKED) "Nothing liked yet" else "No favorites yet",
+        if (key == com.shammapps.xama.data.Favorites.LIKED) "Double-tap a reel or tap the heart to like it."
+        else "Tap the bookmark in the player or Reels, or long-press an item.", null, null
+    )
+
+    /** Long-press menu on list items: like, favorite, share nearby. */
+    private fun showItemSheet(v: LocalVideo) {
+        val F = com.shammapps.xama.data.Favorites
+        val liked = F.isLiked(this, v.id); val fav = F.isFav(this, v.id)
+        val sheet = OptionSheet(this, v.title)
+        sheet.add(if (liked) "Unlike" else "Like", if (liked) R.drawable.ic_heart else R.drawable.ic_heart_outline) {
+            F.toggle(this, F.LIKED, v.id); render()
+        }
+        sheet.add(if (fav) "Remove from Favorites" else "Add to Favorites", if (fav) R.drawable.ic_bookmark else R.drawable.ic_bookmark_outline) {
+            F.toggle(this, F.FAV, v.id); render()
+        }
+        if (!v.isPdf || v.isEncrypted) sheet.add("Share nearby (offline)", R.drawable.ic_wifi_share) {
+            com.shammapps.xama.share.ShareActivity.send(this, listOf(v))
+        }
+        sheet.show()
+    }
+
+    private fun setByFolder(value: Boolean) {
+        special.remove(tab)
+        if (tab == Tab.VIDEOS) {
+            videosByFolder = value
+            openFolder = null
+            prefs.edit().putBoolean("videos_by_folder", value).apply()
+            render(animate = true)
+            return
+        }
+        if (tab == Tab.REELS) {
+            reelsByFolder = value
+            openReelsFolder = null
+            prefs.edit().putBoolean("reels_by_folder", value).apply()
+        } else {
+            musicByFolder = value
+            openMusicFolder = null
+            prefs.edit().putBoolean("music_by_folder", value).apply()
+        }
+        render(animate = true)
+    }
+
+    // ---------------------------------------------------------------- scan all folders
+
+    private fun bindBgSetting() {
+        val on = com.shammapps.xama.player.BackgroundPlay.continueOnLeave(this)
+        findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.bgContinueSwitch).isChecked = on
+        findViewById<TextView>(R.id.bgContinueValue).text =
+            if (on) "On · videos keep playing as audio when you leave Xama" else "Off · video pauses when you leave"
+    }
+
+    private fun bindScanAll() {
+        val on = com.shammapps.xama.storage.XamaStorage.scanAllEnabled(this)
+        val access = com.shammapps.xama.storage.XamaStorage.canWalkStorage(this)
+        findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.scanAllSwitch).isChecked = on && access
+        findViewById<TextView>(R.id.scanAllValue).text = when {
+            on && access -> "On · includes hidden folders and Android/media"
+            on -> "Needs “All files access” – tap to allow"
+            else -> "Off · only media folders"
+        }
+    }
+
+    private fun toggleScanAll() {
+        val store = com.shammapps.xama.storage.XamaStorage
+        val on = store.scanAllEnabled(this)
+        if (on && store.canWalkStorage(this)) {
+            store.setScanAll(this, false)
+            bindScanAll()
+            reloadAsync(force = true)
+            return
+        }
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("Scan all folders")
+            .setMessage(
+                "Xama will also look through every folder on this phone, including hidden folders " +
+                    "and Android/media, for videos and music.\n\n" +
+                    "This needs “All files access”. Note: on Android 11 and newer, Android/data " +
+                    "is blocked for all apps and can't be scanned."
+            )
+            .setPositiveButton("Allow & scan") { _, _ ->
+                store.setScanAll(this, true)
+                if (store.canWalkStorage(this)) {
+                    bindScanAll()
+                    rescan()
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
+                    } catch (_: Exception) {
+                        try { startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } catch (_: Exception) {}
+                    }
+                } else {
+                    ensurePermission()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun openVideo(video: LocalVideo, context: List<LocalVideo>) {
+        if (video.isPdf) {
+            startActivity(Intent(this, PdfViewerActivity::class.java).apply {
+                putExtra(PdfViewerActivity.EXTRA_ID, video.id)
+                putExtra(PdfViewerActivity.EXTRA_TITLE, video.title)
+                putExtra(PdfViewerActivity.EXTRA_IV, video.ivBase64)
+            })
+            return
+        }
+        val playlist = context.filter { !it.isAudio && !it.isPdf }.take(500)
+        startActivity(Intent(this, PlayerActivity::class.java).apply {
+            putExtra(EXTRA_VIDEO_ID, video.id)
+            putExtra(EXTRA_TITLE, video.title)
+            putExtra(EXTRA_FILE_PATH, video.filePath)
+            putExtra(EXTRA_CONTENT_URI, video.contentUri)
+            putExtra(EXTRA_IS_ENCRYPTED, video.isEncrypted)
+            putExtra(EXTRA_IV_BASE64, video.ivBase64)
+            putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST_IDS, ArrayList(playlist.map { it.id }))
+        })
+    }
+
+    // ---------------------------------------------------------------- mini player
+
+    private fun connectMiniPlayer() {
+        if (!PlaybackService.isRunning) {
+            if (findViewById<View>(R.id.miniPlayer).visibility != View.GONE) {
+                findViewById<View>(R.id.miniPlayer).visibility = View.GONE
+                adjustBottomPadding(false)
+            }
+            return
+        }
+        val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
+        val future = MediaController.Builder(this, token).buildAsync()
+        controllerFuture = future
+        future.addListener({
+            val c = try { future.get() } catch (_: Exception) { null } ?: return@addListener
+            controller = c
+            c.addListener(miniListener)
+            bindMiniPlayer()
+            handler.post(miniTicker)
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun releaseMiniPlayer() {
+        handler.removeCallbacks(miniTicker)
+        controller?.removeListener(miniListener)
+        controller = null
+        controllerFuture?.let { MediaController.releaseFuture(it) }
+        controllerFuture = null
+    }
+
+    private fun bindMiniPlayer() {
+        val mini = findViewById<View>(R.id.miniPlayer)
+        val c = controller
+        val item = c?.currentMediaItem
+        if (c == null || item == null || c.playbackState == Player.STATE_IDLE && c.mediaItemCount == 0) {
+            if (mini.visibility != View.GONE) {
+                mini.visibility = View.GONE
+                adjustBottomPadding(false)
+            }
+            return
+        }
+        if (mini.visibility != View.VISIBLE) {
+            mini.visibility = View.VISIBLE
+            mini.startAnimation(AnimationUtils.loadAnimation(this, R.anim.item_fade_up))
+            adjustBottomPadding(true)
+        }
+        val meta = c.mediaMetadata
+        findViewById<TextView>(R.id.miniTitle).text = meta.title ?: item.mediaMetadata.title ?: "Playing"
+        findViewById<TextView>(R.id.miniArtist).text = meta.artist?.toString()?.takeIf { it.isNotBlank() } ?: "Unknown artist"
+        findViewById<ImageButton>(R.id.miniPlayPause).setImageResource(
+            if (c.playWhenReady && c.playbackState != Player.STATE_ENDED) R.drawable.ic_pause else R.drawable.ic_play
+        )
+        val art = findViewById<ImageView>(R.id.miniArt)
+        val data = meta.artworkData
+        val key = item.mediaId + ":" + (data?.size ?: 0)
+        if (key != miniArtKey) {
+            miniArtKey = key
+            art.setImageBitmap(data?.let { try { BitmapFactory.decodeByteArray(it, 0, it.size) } catch (_: Throwable) { null } })
+        }
+        updateMiniProgress()
+    }
+
+    /** Docked layout: the mini player takes its own row, nothing to pad. */
+    @Suppress("UNUSED_PARAMETER")
+    private fun adjustBottomPadding(miniVisible: Boolean) {}
+
+    private fun updateMiniProgress() {
+        val c = controller ?: return
+        val dur = c.duration
+        val bar = findViewById<ProgressBar>(R.id.miniProgress)
+        bar.progress = if (dur != C.TIME_UNSET && dur > 0) ((c.currentPosition * 1000) / dur).toInt() else 0
     }
 }

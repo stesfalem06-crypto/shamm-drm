@@ -23,11 +23,37 @@
         android:paddingEnd="20dp"
         android:paddingTop="10dp"
         android:paddingBottom="10dp"
-        android:background="@drawable/play_circle_bg"
+        android:background="@drawable/indicator_bg"
         android:textColor="#FFFFFF"
         android:textSize="20sp"
         android:textStyle="bold"
         android:visibility="gone"/>
+
+    <ImageButton
+        android:id="@+id/reelBackground"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="28dp"
+        android:layout_marginEnd="8dp"
+        android:padding="12dp"
+        android:scaleType="fitCenter"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_headset"
+        app:tint="#FFFFFF"
+        android:contentDescription="Play in background"/>
+
+    <ImageView
+        android:id="@+id/reelCenterIcon"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_gravity="center"
+        android:padding="18dp"
+        android:background="@drawable/indicator_bg"
+        android:src="@drawable/ic_play"
+        android:alpha="0"
+        app:tint="#FFFFFF"
+        android:importantForAccessibility="no"/>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -37,7 +63,7 @@
         android:background="@drawable/player_bottom_gradient"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
-        android:paddingBottom="28dp"
+        android:paddingBottom="8dp"
         android:paddingTop="48dp">
 
         <TextView
@@ -45,8 +71,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold"
+            android:textSize="17sp"
+            android:fontFamily="sans-serif-medium"
+            android:shadowColor="#99000000"
+            android:shadowRadius="6"
             android:maxLines="2"
             android:ellipsize="end"/>
 
@@ -55,19 +83,115 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="Double-tap sides to seek · Swipe for next"
+            android:text="Double-tap to like · Swipe sideways for brightness/volume"
             android:textColor="#99FFFFFF"
             android:textSize="12sp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:id="@+id/reelTimePos"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="40dp"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:text="0:00"/>
+            <SeekBar
+                android:id="@+id/reelSeek"
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_weight="1"
+                android:max="1000"
+                android:progressTint="@color/accent"
+                android:thumbTint="@color/accent"
+                android:progressBackgroundTint="#55FFFFFF"/>
+            <TextView
+                android:id="@+id/reelTimeDur"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="40dp"
+                android:gravity="end"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:text="0:00"/>
+        </LinearLayout>
     </LinearLayout>
 
-    <ProgressBar
-        android:id="@+id/reelProgress"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="3dp"
-        android:layout_gravity="bottom"
-        android:max="1000"
-        android:progress="0"
-        android:progressTint="#FF6B2C"
-        android:progressBackgroundTint="#33FFFFFF"/>
+    <!-- Double-tap like heart -->
+    <ImageView
+        android:id="@+id/reelBigHeart"
+        android:layout_width="110dp"
+        android:layout_height="110dp"
+        android:layout_gravity="center"
+        android:src="@drawable/ic_heart"
+        app:tint="#FFFF2D55"
+        android:alpha="0"
+        android:importantForAccessibility="no"/>
+
+    <!-- Brightness / volume level indicator (MX style) -->
+    <LinearLayout
+        android:id="@+id/reelLevel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="90dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/indicator_bg"
+        android:paddingStart="14dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone">
+        <ImageView android:id="@+id/reelLevelIcon" android:layout_width="22dp" android:layout_height="22dp"
+            android:src="@drawable/ic_brightness" app:tint="#FFFFFF" android:importantForAccessibility="no"/>
+        <ProgressBar android:id="@+id/reelLevelBar" style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="140dp" android:layout_height="6dp" android:layout_marginStart="10dp"
+            android:max="100" android:progressTint="@color/accent" android:progressBackgroundTint="#55FFFFFF"/>
+        <TextView android:id="@+id/reelLevelText" android:layout_width="40dp" android:layout_height="wrap_content"
+            android:layout_marginStart="10dp" android:gravity="end" android:textColor="#FFFFFF" android:textSize="14sp"
+            android:fontFamily="sans-serif-medium"/>
+    </LinearLayout>
+
+    <!-- Tiny sliders (optional): brightness left, volume right -->
+    <SeekBar android:id="@+id/reelSliderBright" android:layout_width="160dp" android:layout_height="28dp"
+        android:layout_gravity="start|center_vertical" android:layout_marginStart="-62dp"
+        android:rotation="270" android:max="100" android:visibility="gone"
+        android:progressTint="#FFFFFF" android:thumbTint="#FFFFFF" android:progressBackgroundTint="#44FFFFFF"/>
+    <SeekBar android:id="@+id/reelSliderVol" android:layout_width="160dp" android:layout_height="28dp"
+        android:layout_gravity="end|center_vertical" android:layout_marginEnd="-62dp"
+        android:rotation="270" android:max="100" android:visibility="gone"
+        android:progressTint="@color/accent" android:thumbTint="@color/accent" android:progressBackgroundTint="#44FFFFFF"/>
+
+    <!-- Right action column -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end|bottom"
+        android:layout_marginEnd="6dp"
+        android:layout_marginBottom="150dp"
+        android:orientation="vertical"
+        android:gravity="center_horizontal">
+        <ImageButton android:id="@+id/reelLike" android:layout_width="52dp" android:layout_height="52dp"
+            android:padding="10dp" android:scaleType="fitCenter" android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_heart_outline" app:tint="#FFFFFF" android:contentDescription="Like"/>
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Like"
+            android:textColor="#FFFFFF" android:textSize="11sp" android:shadowColor="#99000000" android:shadowRadius="4"/>
+        <ImageButton android:id="@+id/reelFav" android:layout_width="52dp" android:layout_height="52dp"
+            android:layout_marginTop="10dp" android:padding="11dp" android:scaleType="fitCenter"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_bookmark_outline" app:tint="#FFFFFF" android:contentDescription="Add to favorites"/>
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Save"
+            android:textColor="#FFFFFF" android:textSize="11sp" android:shadowColor="#99000000" android:shadowRadius="4"/>
+        <ImageButton android:id="@+id/reelSliders" android:layout_width="52dp" android:layout_height="52dp"
+            android:layout_marginTop="10dp" android:padding="13dp" android:scaleType="fitCenter"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_tune" app:tint="#FFFFFF" android:contentDescription="Brightness and volume sliders"/>
+    </LinearLayout>
+
 </FrameLayout>

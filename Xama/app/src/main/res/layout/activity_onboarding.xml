@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_dark">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/nav_bar"
+        android:paddingStart="16dp"
+        android:paddingEnd="8dp">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/text_primary"
+            android:textSize="19sp"
+            android:fontFamily="sans-serif-medium"
+            android:text="Connect to shop PC"/>
+        <TextView
+            android:id="@+id/onbSkip"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:background="?attr/selectableItemBackground"
+            android:textColor="@color/accent_light"
+            android:textSize="15sp"
+            android:text="Skip"/>
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <ImageView
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:src="@drawable/ic_usb"
+                app:tint="@color/accent"
+                android:importantForAccessibility="no"/>
+            <TextView
+                style="@style/Text.Title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Get videos from the shop"/>
+            <TextView
+                style="@style/Text.Caption"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textSize="14sp"
+                android:text="Tap “Set up now” once and allow everything Xama asks for. Then, at the shop:"/>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/card_bg"
+                android:padding="18dp"
+                android:gravity="center"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
+                android:fontFamily="sans-serif-medium"
+                android:text="Plug into the shop PC, choose File transfer, tap Allow"/>
+
+            <TextView
+                android:id="@+id/onbSetup"
+                style="@style/PillButton.Primary"
+                android:layout_width="match_parent"
+                android:layout_marginTop="20dp"
+                android:text="Set up now"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:padding="16dp">
+                <TextView android:id="@+id/onbStatusMedia" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:textSize="15sp"/>
+                <LinearLayout android:id="@+id/onbAllFilesRow" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp" android:background="?attr/selectableItemBackground">
+                    <TextView android:id="@+id/onbStatusAllFiles" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:textSize="15sp"/>
+                </LinearLayout>
+                <TextView android:id="@+id/onbStatusNotif" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp" android:textSize="15sp"/>
+                <TextView android:id="@+id/onbStatusId" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp" android:textSize="15sp"/>
+                <TextView android:id="@+id/onbReady" style="@style/Text.Caption" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:layout_marginTop="10dp" android:visibility="gone"
+                    android:text="All set. At the shop: plug in, choose File transfer, tap Allow."/>
+            </LinearLayout>
+
+            <TextView
+                style="@style/Text.Caption"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="If the phone shows “Charging this device via USB”, pull down the notification, tap it and pick “File transfer” (sometimes called MTP or Transfer files)."/>
+
+            <TextView
+                android:id="@+id/onbAdvancedToggle"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="16dp"
+                android:gravity="center_vertical"
+                android:background="?attr/selectableItemBackground"
+                android:textColor="@color/accent_light"
+                android:textSize="14sp"
+                android:text="Advanced: USB debugging (optional)"/>
+
+            <LinearLayout
+                android:id="@+id/onbAdvanced"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+                <TextView style="@style/Text.Caption" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="Not needed for normal use. Only if the shop asks for it."/>
+                <TextView style="@style/Text.Section" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp" android:text="1. Turn on Developer options"/>
+                <TextView style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Settings › About phone › tap “Build number” 7 times."/>
+                <TextView android:id="@+id/onbOpenAbout" style="@style/PillButton.Secondary"
+                    android:layout_marginTop="10dp" android:text="Open About phone"/>
+                <TextView style="@style/Text.Section" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp" android:text="2. Turn on USB debugging"/>
+                <TextView style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Developer options › switch on “USB debugging”. When plugged in, tap Allow."/>
+                <TextView android:id="@+id/onbOpenDev" style="@style/PillButton.Secondary"
+                    android:layout_marginTop="10dp" android:text="Open Developer options"/>
+                <TextView android:id="@+id/onbStatusDev" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp" android:textSize="14sp"/>
+                <TextView android:id="@+id/onbStatusAdb" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp" android:textSize="14sp"/>
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+
+    <TextView
+        android:id="@+id/onbDone"
+        style="@style/PillButton.Secondary"
+        android:layout_width="match_parent"
+        android:layout_margin="16dp"
+        android:text="Finish later"/>
+</LinearLayout>

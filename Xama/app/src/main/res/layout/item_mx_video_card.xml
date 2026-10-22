@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Large thumbnail card: 16:9 image, duration badge, title, size / resolution. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="?attr/selectableItemBackground"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="12dp">
+
+    <com.shammapps.xama.ui.AspectFrameLayout16x9
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+        <ImageView
+            android:id="@+id/videoThumb"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:background="@drawable/thumb_placeholder"
+            android:importantForAccessibility="no"/>
+        <TextView
+            android:id="@+id/videoNew"
+            style="@style/NewBadge"
+            android:layout_gravity="top|start"
+            android:layout_margin="8dp"/>
+        <TextView
+            android:id="@+id/videoDuration"
+            style="@style/DurationChip"
+            android:layout_margin="8dp"
+            android:textSize="12sp"/>
+        <ProgressBar
+            android:id="@+id/videoProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_gravity="bottom"
+            android:max="1000"
+            android:progressTint="@color/badge_new"
+            android:progressBackgroundTint="#55000000"
+            android:visibility="gone"/>
+    </com.shammapps.xama.ui.AspectFrameLayout16x9>
+
+    <TextView
+        android:id="@+id/videoTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textColor="@color/text_primary"
+        android:textSize="15sp"
+        android:fontFamily="sans-serif-medium"
+        android:maxLines="2"
+        android:ellipsize="end"/>
+    <TextView
+        android:id="@+id/videoMeta"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="@color/text_muted"
+        android:textSize="12sp"
+        android:maxLines="1"
+        android:ellipsize="end"/>
+</LinearLayout>

@@ -5,28 +5,43 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
+    android:background="@drawable/row_ripple"
+    android:paddingStart="4dp"
+    android:paddingEnd="4dp"
     android:paddingTop="8dp"
     android:paddingBottom="8dp">
 
     <androidx.cardview.widget.CardView
-        android:layout_width="76dp"
-        android:layout_height="96dp"
+        android:layout_width="136dp"
+        android:layout_height="78dp"
         app:cardCornerRadius="14dp"
         app:cardElevation="0dp"
-        app:cardBackgroundColor="#2C2C2E">
-        <ImageView android:id="@+id/posterImage" android:layout_width="match_parent" android:layout_height="match_parent"
-            android:scaleType="centerCrop" android:background="@drawable/thumb_placeholder" android:contentDescription="Poster"/>
+        app:cardBackgroundColor="@color/bg_elevated">
+        <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent">
+            <ImageView android:id="@+id/posterImage" android:layout_width="match_parent" android:layout_height="match_parent"
+                android:scaleType="centerCrop" android:background="@drawable/thumb_placeholder" android:contentDescription="Thumbnail"/>
+            <ImageView android:id="@+id/posterGlyph" android:layout_width="26dp" android:layout_height="26dp"
+                android:layout_gravity="center" android:src="@drawable/ic_movie" app:tint="#59FFFFFF"
+                android:visibility="gone" android:importantForAccessibility="no"/>
+            <TextView android:id="@+id/posterDuration" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_gravity="bottom|end" android:layout_margin="6dp" android:paddingStart="6dp" android:paddingEnd="6dp"
+                android:paddingTop="1dp" android:paddingBottom="1dp" android:background="@drawable/badge_bg"
+                android:textColor="#FFFFFF" android:textSize="10.5sp" android:fontFamily="sans-serif-medium"/>
+            <ProgressBar android:id="@+id/posterProgress" style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent" android:layout_height="3dp" android:layout_gravity="bottom"
+                android:max="1000" android:progressDrawable="@drawable/progress_track" android:visibility="gone"/>
+        </FrameLayout>
     </androidx.cardview.widget.CardView>
 
     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
         android:orientation="vertical" android:layout_marginStart="14dp">
-        <TextView android:id="@+id/posterTitle" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:textColor="#FFFFFF" android:textSize="16sp" android:textStyle="bold" android:maxLines="2" android:ellipsize="end"/>
-        <TextView android:id="@+id/posterDuration" android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:layout_marginTop="4dp" android:textColor="#8E8E93" android:textSize="13sp"/>
+        <TextView android:id="@+id/posterTitle" style="@style/Text.Body" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:maxLines="2" android:ellipsize="end"/>
+        <TextView android:id="@+id/posterMeta" style="@style/Text.Caption" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:layout_marginTop="3dp" android:maxLines="1" android:ellipsize="end"/>
         <TextView android:id="@+id/posterBadge" android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:layout_marginTop="6dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="2dp"
-            android:paddingBottom="2dp" android:textSize="10sp" android:textStyle="bold" android:textColor="#FFFFFF"
-            android:background="@drawable/badge_bg" android:visibility="gone"/>
+            android:layout_marginTop="6dp" android:paddingStart="7dp" android:paddingEnd="7dp" android:paddingTop="2dp"
+            android:paddingBottom="2dp" android:textSize="10sp" android:fontFamily="sans-serif-medium" android:letterSpacing="0.06"
+            android:textColor="@color/accent_light" android:background="@drawable/badge_accent" android:visibility="gone"/>
     </LinearLayout>
 </LinearLayout>

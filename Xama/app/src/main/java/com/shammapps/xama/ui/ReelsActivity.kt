@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.shammapps.xama.R
 import com.shammapps.xama.crypto.ShammKeyResolver
+import com.shammapps.xama.data.LibraryCache
 import com.shammapps.xama.data.LocalVideo
 import com.shammapps.xama.data.VideoRepository
 import com.shammapps.xama.data.WatchHistory
@@ -33,13 +34,19 @@ class ReelsActivity : AppCompatActivity() {
             }
         })
 
+        findViewById<android.view.View>(R.id.reelsBack).setOnClickListener { finish() }
+
         val ids = intent.getStringArrayListExtra("video_ids") ?: arrayListOf()
         val startIndex = intent.getIntExtra(MainActivity.EXTRA_START_INDEX, 0)
 
-        val repository = VideoRepository(this)
-        // Prefer id lookup from full library; fallback empty
-        val all = try { repository.loadAll() } catch (_: Exception) { emptyList() }
-        videos = ids.mapNotNull { id -> all.find { it.id == id } }
+        // Use the library snapshot from the main screen; rescan only if it's gone
+        // (e.g. process was recreated).
+        videos = LibraryCache.byIds(ids)
+        if (videos.isEmpty()) {
+            val all = try { VideoRepository(this).loadAll() } catch (_: Exception) { emptyList() }
+            val byId = all.associateBy { it.id }
+            videos = ids.mapNotNull { byId[it] }
+        }
 
         if (videos.isEmpty()) {
             finish()
@@ -55,8 +62,19 @@ class ReelsActivity : AppCompatActivity() {
             }
         }
 
+        // One decoder/audio owner: pause any background session before Reels takes over.
+        runCatching { com.shammapps.xama.player.PlaybackService.instance?.currentPlayer()?.let { if (it.isPlaying) it.pause() } }
         val resolver = ShammKeyResolver(this)
-        adapter = ReelsAdapter(videos, resolver)
+        adapter = ReelsAdapter(videos, resolver) { pos, positionMs ->
+            val v = videos.getOrNull(pos)
+            if (!com.shammapps.xama.player.BackgroundPlay.isAllowed(v)) {
+                com.shammapps.xama.player.BackgroundPlay.refuseToast(this)
+            } else {
+                val rv = recycler()?.findViewHolderForAdapterPosition(pos)
+                if (rv is ReelsAdapter.ReelHolder) adapter.setPlaying(rv, false)
+                com.shammapps.xama.player.BackgroundPlay.start(this, videos, pos, positionMs) { finish() }
+            }
+        }
 
         pager = findViewById(R.id.reelsPager)
         pager.offscreenPageLimit = 1 // only keep neighbors — major memory win
@@ -87,9 +105,16 @@ class ReelsActivity : AppCompatActivity() {
         }
     }
 
+    override fun onDestroy() {
+        if (::adapter.isInitialized) adapter.releaseAll()
+        if (::pager.isInitialized) pager.adapter = null
+        super.onDestroy()
+    }
+
     override fun onPause() {
         super.onPause()
         if (!::pager.isInitialized) return
+        if (isFinishing && ::adapter.isInitialized) { adapter.releaseAll(); return }
         val holder = recycler()?.findViewHolderForAdapterPosition(pager.currentItem)
         if (holder is ReelsAdapter.ReelHolder) adapter.setPlaying(holder, false)
     }
